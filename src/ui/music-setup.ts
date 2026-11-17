@@ -25,7 +25,7 @@ export function createSetup(auth: GoogleAuth, onSaved: () => void): HTMLElement 
     h('ol', { class: 'steps' },
       h('li', {}, link(CONSOLE_URL, 'Open Google Cloud'), ' and create a project (any name).'),
       h('li', {}, 'Search for “YouTube Data API v3” and press Enable.'),
-      h('li', {}, 'Set up the consent screen as External, and add your own Google address as a test user.'),
+      h('li', {}, 'Set up the consent screen as External. Then open Audience, and under Test users add your own Google address. Without that, Google blocks the sign-in.'),
       h('li', {}, 'Create credentials: OAuth client ID, type Web application. Under Authorized JavaScript origins add ', h('code', {}, origin), ' ', copy, '.'),
       h('li', {}, 'Paste the client ID it gives you here.'),
     ),

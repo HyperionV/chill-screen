@@ -45,7 +45,7 @@ export function createMusicPanel(player: MusicPlayer): Panel {
     }
     if (!auth.wasSignedIn || !loaded) {
       browse.append(
-        h('p', { class: 'hint' }, 'Sign in with Google to reach your playlists and liked videos. ChillScreen only reads them.'),
+        h('p', { class: 'hint' }, 'Sign in with Google to reach your playlists and liked videos. ChillScreen only reads them. If Google says “Access blocked”, add your address under Audience, Test users, in Google Cloud.'),
         h('div', { class: 'music-actions' },
           h('button', { class: 'btn primary', onclick: () => void signIn(true) }, 'Sign in with Google'),
           h('button', { class: 'text-btn', onclick: () => {
