@@ -21,8 +21,4 @@ mountUi(uiRoot, scenery);
 void scenery.init();
 keepStorage();
 
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch((err: unknown) => console.warn('[app] offline support unavailable', err));
-}
-
 Object.assign(window, { chillscreen: { frameCost: () => scenery.frameCost, scenery } });
