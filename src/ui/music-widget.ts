@@ -13,7 +13,7 @@ const IDLE_HINT = 'Choose something to play';
 export function createMusicWidget(player: MusicPlayer, openLibrary: () => void): HTMLElement {
   const title = h('p', { class: 'mw-title' });
   const channel = h('p', { class: 'mw-channel' });
-  // A thin line along the bottom edge that shows how far the track has played; drag it to skip.
+  // A thin line under the song's name that shows how far the track has played; drag it to skip.
   const seek = h('input', { type: 'range', class: 'mw-seek', min: 0, max: SEEK_STEPS, step: 1, value: 0, 'aria-label': 'Position in the track' });
   let dragging = false;
   seek.addEventListener('pointerdown', () => (dragging = true));
@@ -31,11 +31,10 @@ export function createMusicWidget(player: MusicPlayer, openLibrary: () => void):
     h('button', { class: 'icon-btn', 'aria-label': 'Previous track', title: 'Previous', onclick: () => void player.previous() }, icon(ICONS.prev)),
     playPause,
     h('button', { class: 'icon-btn', 'aria-label': 'Next track', title: 'Next', onclick: () => void player.next() }, icon(ICONS.next)),
-    h('div', { class: 'mw-text' }, title, channel),
+    h('div', { class: 'mw-text' }, title, channel, seek),
     h('span', { class: 'mw-volume-icon' }, icon(ICONS.volume)),
     volume,
     h('button', { class: 'icon-btn', 'aria-label': 'Open your music', title: 'Your playlists and search', onclick: openLibrary }, icon(ICONS.search)),
-    seek,
   );
 
   const update = (): void => {
