@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { JourneyView } from '../journey-view';
-import { Placeholder } from '../placeholder';
+import { FairyRoad } from './fairy-road';
 
-export function createFairyRoad(_nightSky: NightSky): JourneyView {
-  return new Placeholder('Fairy Road');
+export function createFairyRoad(nightSky: NightSky): JourneyView {
+  return new FairyRoad(nightSky);
 }
