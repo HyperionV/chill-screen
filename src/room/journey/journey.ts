@@ -1,12 +1,27 @@
 import { css, mix, type RGB } from '../../render/color';
 import { memoryCanvas } from '../../render/pixel-stage';
 import { hourNow } from '../../scene/clock';
+import { readJson, writeJson } from '../../store';
 import type { Look } from '../../wallpapers/look';
+import { ChapterTitle } from '../journeys/chapter-title';
+import type { JourneyView } from '../journeys/journey-view';
+import { fbm, hash } from '../journeys/noise';
 import type { NightSky } from '../night-sky';
 import { SkyDome, clamp01, type SkyState } from '../sky';
-import type { OutsideView, ViewFrame } from '../view';
+import type { ViewFrame } from '../view';
 import { Birds, Butterflies, Fireflies } from './air';
-import { BIOMES, SEGMENT, blend, blendNumber, weightsAt, type Biome, type TreeKind } from './biomes';
+import {
+  BIOMES,
+  OLD_WOOD_BIOME,
+  ROAD_LENGTH,
+  SEGMENT,
+  blend,
+  blendNumber,
+  weightsAt,
+  type Biome,
+  type TreeKind,
+} from './biomes';
+import { Clearing } from './clearing';
 import { PACE_SPEED, type Pace } from './pace';
 import { buildPlants, drawSwaying, wind, type PlantSet, type Sprite } from './sprites';
 import { Wildlife, type Rows, type Standing } from './wildlife';
@@ -29,22 +44,28 @@ const DESIGN_ROWS = 270;
 /** Colours are worked out once per this many columns: they change too slowly across the view to show. */
 const BLOCK = 8;
 const SAND = css([196, 178, 124]);
+const ROUTE_KEY = 'chillscreen.route.wildwood';
+const SAVE_EVERY_SECONDS = 5;
+const CAMP_TREE_CLEARANCE = 105;
 /** How far the crown of each kind leans in a full gust, as a share of its height. */
-const SWAY: Record<TreeKind | 'reed' | 'tuft', number> = { pine: 0.035, oak: 0.06, autumn: 0.06, bush: 0.05, autumnBush: 0.05, reed: 0.12, tuft: 0.22 };
+const SWAY: Record<TreeKind | 'reed' | 'tuft' | 'fern' | 'mushroom', number> = {
+  pine: 0.035,
+  oak: 0.06,
+  autumn: 0.06,
+  bush: 0.05,
+  autumnBush: 0.05,
+  tallPine: 0.03,
+  gnarledOak: 0.045,
+  mossBush: 0.05,
+  reed: 0.12,
+  tuft: 0.22,
+  fern: 0.09,
+  mushroom: 0,
+};
 const WHITE: RGB = [255, 255, 255];
 
-const hash = (n: number): number => {
-  const s = Math.sin(n * 12.9898) * 43758.5453;
-  return s - Math.floor(s);
-};
-const noise = (x: number): number => {
-  const i = Math.floor(x);
-  const f = x - i;
-  const t = f * f * (3 - 2 * f);
-  return hash(i) * (1 - t) + hash(i + 1) * t;
-};
-const fbm = (x: number): number => noise(x) * 0.55 + noise(x * 2.1 + 13) * 0.3 + noise(x * 4.3 + 57) * 0.15;
 const luma = (c: RGB): number => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
+const isRoadPos = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 
 /** The colours for one run of columns, as ready-made strings. */
 interface Block {
@@ -58,24 +79,29 @@ interface Block {
   waterDeep: string;
 }
 
-/** The chosen start of the road: `?biome=2` jumps to the third country, otherwise the road is wherever the clock says. */
+/** The chosen start of the road: `?biome=2` wins, else saved road position, else where the clock says. */
 function startOfRoad(unit: number): number {
   const asked = new URLSearchParams(location.search).get('biome');
-  if (asked !== null && Number.isFinite(Number(asked))) return Number(asked) * SEGMENT + SEGMENT * 0.25;
-  return ((Date.now() / 1000) * SPEED * unit) % (SEGMENT * BIOMES.length);
+  if (asked !== null && asked.trim() !== '' && Number.isFinite(Number(asked))) {
+    return Number(asked) * SEGMENT + SEGMENT * 0.25;
+  }
+  const saved = readJson<number>(ROUTE_KEY, -1, isRoadPos);
+  if (saved >= 0) return saved % ROAD_LENGTH;
+  return ((Date.now() / 1000) * SPEED * unit) % ROAD_LENGTH;
 }
 
 /**
  * A slow journey past the window, in pixels: mountains, hills and trees drifting by at their own speeds, through
- * forest, meadow, lakeside and autumn woods that blend into one another without a seam. Trees sway in the wind,
- * deer graze and wander, rabbits hop, ducks drift on the lake, birds cross the sky, butterflies work the meadows
- * by day and fireflies come out at night. The animals bolt from the pointer when it comes close.
+ * forest, meadow, lakeside, autumn woods, a campfire clearing and the old wood, blending without a seam. Trees sway
+ * in the wind, animals roam and react to the pointer and tossed food, and a recurring fox follows along the road.
  */
-export class Journey implements OutsideView {
+export class Journey implements JourneyView {
   private w = 0;
   private h = 0;
   private unit = 1;
   private scroll = 0;
+  private started = false;
+  private sinceSave = 0;
   private multiplier = PACE_SPEED.gentle;
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [128, 128, 128] };
   private readonly dome: SkyDome;
@@ -86,7 +112,10 @@ export class Journey implements OutsideView {
   private lake = new Float32Array(0);
   private shore = new Int16Array(0);
   private blocks: Block[] = [];
+  private maxOldWood = 0;
   private readonly wildlife = new Wildlife();
+  private readonly clearing = new Clearing();
+  private readonly chapterTitle = new ChapterTitle();
   private readonly birds = new Birds();
   private readonly butterflies = new Butterflies();
   private readonly fireflies = new Fireflies();
@@ -108,52 +137,142 @@ export class Journey implements OutsideView {
     this.dome.resize(w, h);
     this.land.canvas.width = w;
     this.land.canvas.height = h;
+    this.land.ctx.imageSmoothingEnabled = false;
     this.shares = new Float32Array(w * BIOMES.length);
     this.lake = new Float32Array(w);
     this.shore = new Int16Array(w);
     const grasses = BIOMES.map((b) => b.grass);
     this.plants = { near: buildPlants(this.unit, 0, grasses), mid: buildPlants(this.unit * 0.5, 0.45, grasses) };
-    this.scroll = startOfRoad(this.unit);
-    this.wildlife.reset(this.scroll);
+    if (!this.started) {
+      this.started = true;
+      this.scroll = startOfRoad(this.unit);
+      this.wildlife.reset(this.scroll, w, this.rows(), this.clearing.campWorldX(this.scroll, w));
+    }
+  }
+
+  press(x: number, y: number): void {
+    if (this.w <= 0 || this.h <= 0) return;
+    const rows = this.rows();
+    if (this.clearing.tryStoke(x, y, this.scroll, this.w, rows)) return;
+    if (y < this.h * HORIZON) return;
+    const col = Math.max(0, Math.min(this.w - 1, Math.round(x)));
+    if (this.lake[col] > 0.35) return;
+    const minY = Math.max(rows.dryTop, this.shore[col] + 2);
+    const targetY = Math.max(minY, Math.min(rows.dryBottom, Math.round(y)));
+    this.wildlife.tossFood(this.scroll + x, targetY);
   }
 
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look {
     const state = this.dome.stateAt(hourNow());
-    this.scroll += SPEED * this.multiplier * this.unit * frame.dt;
+    const roadSpeed = SPEED * this.multiplier * this.unit;
+    this.scroll += roadSpeed * frame.dt;
+    if (this.multiplier > 0) {
+      this.sinceSave += frame.dt;
+      if (this.sinceSave >= SAVE_EVERY_SECONDS) {
+        this.sinceSave = 0;
+        writeJson(ROUTE_KEY, Math.round(((this.scroll % ROAD_LENGTH) + ROAD_LENGTH) % ROAD_LENGTH));
+      }
+    }
+
     this.prepare(state);
     this.updateLook(state);
     this.dome.draw(ctx, state, frame, this.look);
     this.birds.draw(ctx, frame.dt, frame.time, state.day, this.w, this.h);
 
     const L = this.land.ctx;
+    L.imageSmoothingEnabled = false;
     L.clearRect(0, 0, this.w, this.h);
     this.paintMountains(L, 'mountain', MOUNTAIN);
     this.paintMountains(L, 'hill', HILL);
     const mid: Standing[] = [];
-    this.plantTrees(this.plants?.mid, 0.4, 28, 1.5, 0.25, (r) => Math.round(this.h * MID_BASE) + Math.round(r * 3), frame.time, 11, mid);
+    this.plantTrees(
+      this.plants?.mid,
+      0.4,
+      28,
+      1.5,
+      0.25,
+      (r) => Math.round(this.h * MID_BASE) + Math.round(r * 3),
+      frame.time,
+      11,
+      mid,
+    );
     this.paintStanding(L, mid);
     this.paintGround(L, state, frame.time);
 
     const rows = this.rows();
-    this.wildlife.update(frame.dt, this.scroll, this.w, rows, frame.pointer);
-    const near: Standing[] = this.wildlife.standing(this.scroll);
-    this.plantTrees(this.plants?.near, 1, 50, 1, 0.35, (r) => Math.round(this.h * (NEAR_ROWS[0] + (NEAR_ROWS[1] - NEAR_ROWS[0]) * r)), frame.time, 29, near);
+    const campX = this.clearing.campWorldX(this.scroll, this.w);
+    this.clearing.update(frame.dt, this.scroll, this.w, frame.pointer, rows);
+    this.wildlife.update(frame.dt, {
+      scroll: this.scroll,
+      screenW: this.w,
+      screenH: this.h,
+      rows,
+      pointer: frame.pointer,
+      campWorldX: campX,
+      travellerWaving: this.clearing.isTravellerWaving(),
+      day: state.day,
+      roadSpeed,
+    });
+
+    const near: Standing[] = [
+      ...this.wildlife.standing(this.scroll, frame.pointer),
+      ...this.clearing.standing(this.scroll, this.w, rows, frame.time),
+    ];
+    this.plantTrees(
+      this.plants?.near,
+      1,
+      50,
+      1,
+      0.35,
+      (r) => Math.round(this.h * (NEAR_ROWS[0] + (NEAR_ROWS[1] - NEAR_ROWS[0]) * r)),
+      frame.time,
+      29,
+      near,
+    );
     this.plantReeds(frame.time, near);
+    this.plantOldWoodFloor(frame.time, near);
     this.paintFlowers(L);
     this.paintStanding(L, near);
     this.paintTufts(L, frame.time);
-    this.butterflies.draw(L, frame.dt, frame.time, this.butterflyPresence(state), this.w, [this.h * 0.6, this.h * 0.8], frame.pointer);
+    this.paintOldWoodFog(L, frame.time);
+    this.butterflies.draw(
+      L,
+      frame.dt,
+      frame.time,
+      this.butterflyPresence(state),
+      this.w,
+      [this.h * 0.6, this.h * 0.8],
+      frame.pointer,
+    );
     this.tintLand(L, state);
+    this.clearing.drawGlow(L, this.scroll, this.w, rows, state.day, frame.time);
+    this.clearing.drawFlamesAndParticles(L, this.scroll, this.w, rows, frame.time);
+
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.land.canvas, 0, 0);
-    this.fireflies.draw(ctx, frame.dt, frame.time, 1 - state.day, this.w, [this.h * 0.62, this.h * 0.82]);
+    this.wildlife.drawCanopyOwl(ctx);
+    const centerOldWood = this.shares[Math.floor(this.w / 2) * BIOMES.length + OLD_WOOD_BIOME];
+    this.fireflies.draw(
+      ctx,
+      frame.dt,
+      frame.time,
+      1 - state.day,
+      this.w,
+      [this.h * 0.62, this.h * 0.82],
+      centerOldWood,
+    );
+    const chapter = this.dominant(Math.floor(this.w / 2)).name;
+    this.chapterTitle.draw(ctx, frame.dt, this.w, this.h, chapter);
     return this.look;
   }
 
   private rows(): Rows {
     const g = Math.round(this.h * GROUND);
     return {
-      dryTop: g + Math.round(this.h * 0.06), dryBottom: Math.round(this.h * NEAR_ROWS[1]),
-      lakeTop: g - Math.round(this.h * 0.005), lakeBottom: g + Math.round(this.h * 0.06),
+      dryTop: g + Math.round(this.h * 0.06),
+      dryBottom: Math.round(this.h * NEAR_ROWS[1]),
+      lakeTop: g - Math.round(this.h * 0.005),
+      lakeBottom: g + Math.round(this.h * 0.06),
     };
   }
 
@@ -161,12 +280,15 @@ export class Journey implements OutsideView {
   private prepare(state: SkyState): void {
     const n = BIOMES.length;
     const g = Math.round(this.h * GROUND);
+    let maxOldWood = 0;
     for (let x = 0; x < this.w; x++) {
       weightsAt(this.scroll + x, this.scratch);
       this.shares.set(this.scratch, x * n);
+      if (this.scratch[OLD_WOOD_BIOME] > maxOldWood) maxOldWood = this.scratch[OLD_WOOD_BIOME];
       this.lake[x] = blendNumber(this.shares, x * n, (b) => b.lake);
       this.shore[x] = g + Math.round(this.lake[x] * LAKE_DROP * this.h);
     }
+    this.maxOldWood = maxOldWood;
     const horizon = state.sky.horizon;
     const count = Math.ceil(this.w / BLOCK);
     this.blocks.length = count;
@@ -175,9 +297,14 @@ export class Journey implements OutsideView {
       const grass = blend(this.shares, o, (b) => b.grass);
       const mountain = mix(blend(this.shares, o, (b) => b.mountain), horizon, 0.45);
       this.blocks[i] = {
-        mountain: css(mountain), mountainLit: css(mix(mountain, WHITE, 0.2)), hill: css(mix(blend(this.shares, o, (b) => b.hill), horizon, 0.2)),
-        grass: css(grass), grassLight: css(mix(grass, WHITE, 0.14)), dark: css(blend(this.shares, o, (b) => b.grassDark)),
-        waterTop: css(mix(horizon, [78, 146, 176], 0.55)), waterDeep: css(mix(state.sky.zenith, [40, 104, 142], 0.55)),
+        mountain: css(mountain),
+        mountainLit: css(mix(mountain, WHITE, 0.2)),
+        hill: css(mix(blend(this.shares, o, (b) => b.hill), horizon, 0.2)),
+        grass: css(grass),
+        grassLight: css(mix(grass, WHITE, 0.14)),
+        dark: css(blend(this.shares, o, (b) => b.grassDark)),
+        waterTop: css(mix(horizon, [78, 146, 176], 0.55)),
+        waterDeep: css(mix(state.sky.zenith, [40, 104, 142], 0.55)),
       };
     }
   }
@@ -190,12 +317,23 @@ export class Journey implements OutsideView {
     const lit = mix([40, 56, 90], ground, day);
     this.look.mean = luma(air) * 0.65 + luma(lit) * 0.35;
     this.look.night = 1 - day;
-    this.look.tint = mix(air, lit, 0.3);
+    let tint = mix(air, lit, 0.3);
+    const campX = this.clearing.campWorldX(this.scroll, this.w);
+    if (campX !== null && 1 - day > 0.25) {
+      const dist = Math.abs(campX - this.scroll - this.w * 0.5);
+      const nearCenter = clamp01(1 - dist / (this.w * 0.5));
+      tint = mix(tint, [235, 142, 62], 0.14 * nearCenter * (1 - day));
+    }
+    this.look.tint = tint;
     this.look.sun = sun.up > -0.02 ? { u: sun.u, v: sun.v, strength: 0.7, color: sky.light } : null;
   }
 
   /** A ridge of far mountains or low hills, drifting slowly, lit on the slopes that face the sun. */
-  private paintMountains(L: CanvasRenderingContext2D, key: 'mountain' | 'hill', spec: { base: number; height: number; speed: number; scale: number }): void {
+  private paintMountains(
+    L: CanvasRenderingContext2D,
+    key: 'mountain' | 'hill',
+    spec: { base: number; height: number; speed: number; scale: number },
+  ): void {
     const ground = Math.round(this.h * GROUND);
     const base = Math.round(this.h * spec.base);
     const reach = this.h * spec.height;
@@ -216,11 +354,19 @@ export class Journey implements OutsideView {
 
   /** Where each plant at this distance stands this frame, and how to draw it. */
   private plantTrees(
-    set: PlantSet | undefined, speed: number, cell: number, crowding: number, lakeLimit: number,
-    rowOf: (r: number) => number, time: number, salt: number, out: Standing[],
+    set: PlantSet | undefined,
+    speed: number,
+    cell: number,
+    crowding: number,
+    lakeLimit: number,
+    rowOf: (r: number) => number,
+    time: number,
+    salt: number,
+    out: Standing[],
   ): void {
     if (!set) return;
     const n = BIOMES.length;
+    const campX = speed === 1 ? this.clearing.campWorldX(this.scroll, this.w) : null;
     const first = Math.floor((this.scroll * speed - 70) / cell);
     const last = Math.ceil((this.scroll * speed + this.w + 70) / cell);
     for (let k = first; k <= last; k++) {
@@ -231,6 +377,7 @@ export class Journey implements OutsideView {
       const count = Math.floor(expected) + (hash(seed) < expected % 1 ? 1 : 0);
       for (let i = 0; i < count; i++) {
         const lx = (k + hash(seed + i * 3 + 1)) * cell;
+        if (campX !== null && Math.abs(lx - campX) < CAMP_TREE_CLEARANCE) continue;
         const sx = lx - this.scroll * speed;
         const kind = this.kindAt(Math.max(0, Math.min(this.w - 1, Math.round(sx))), hash(seed + i * 3 + 2));
         const variants = set.trees[kind];
@@ -241,7 +388,15 @@ export class Journey implements OutsideView {
     }
   }
 
-  private plantStanding(sprite: Sprite, sx: number, baseY: number, lx: number, time: number, sway: number, shadow: boolean): Standing {
+  private plantStanding(
+    sprite: Sprite,
+    sx: number,
+    baseY: number,
+    lx: number,
+    time: number,
+    sway: number,
+    shadow: boolean,
+  ): Standing {
     return {
       y: baseY,
       paint: (L) => {
@@ -272,6 +427,29 @@ export class Journey implements OutsideView {
       const sprite = set.reeds[Math.floor(hash(seed + 2) * set.reeds.length)];
       const baseY = this.shore[Math.max(0, Math.min(this.w - 1, Math.round(sx)))] - 1 - Math.round(hash(seed + 3) * 6);
       out.push(this.plantStanding(sprite, sx, baseY, lx, time, SWAY.reed, false));
+    }
+  }
+
+  /** Ferns and woodland mushroom clusters growing across the floor of the Old Wood. */
+  private plantOldWoodFloor(time: number, out: Standing[]): void {
+    const set = this.plants?.near;
+    if (!set || this.maxOldWood < 0.2) return;
+    const n = BIOMES.length;
+    const cell = 18;
+    const first = Math.floor((this.scroll - 20) / cell);
+    const last = Math.ceil((this.scroll + this.w + 20) / cell);
+    for (let k = first; k <= last; k++) {
+      const seed = k * 5297 + 13;
+      const col = Math.max(0, Math.min(this.w - 1, Math.round((k + 0.5) * cell - this.scroll)));
+      const oldWood = this.shares[col * n + OLD_WOOD_BIOME];
+      if (oldWood < 0.25 || hash(seed) > oldWood * 0.65) continue;
+      const lx = (k + hash(seed + 1)) * cell;
+      const sx = lx - this.scroll;
+      const isFern = hash(seed + 2) < 0.68;
+      const list = isFern ? set.ferns : set.mushrooms;
+      const sprite = list[Math.floor(hash(seed + 3) * list.length)];
+      const baseY = Math.round(this.h * (NEAR_ROWS[0] + (NEAR_ROWS[1] - NEAR_ROWS[0]) * hash(seed + 4)));
+      out.push(this.plantStanding(sprite, sx, baseY, lx, time, isFern ? SWAY.fern : SWAY.mushroom, false));
     }
   }
 
@@ -336,6 +514,32 @@ export class Journey implements OutsideView {
         const block = this.blocks[x >> 3];
         L.fillStyle = hash(seed + 0.3) < 0.5 ? block.dark : block.grassLight;
         L.fillRect(x, r, length, 1);
+      }
+    }
+  }
+
+  /** Low drifting mist bands hugging the Old Wood floor. */
+  private paintOldWoodFog(L: CanvasRenderingContext2D, time: number): void {
+    if (this.maxOldWood < 0.06) return;
+    const n = BIOMES.length;
+    const bands = [
+      { row: 0.705, h: 3, drift: 4, alpha: 0.16, scale: 0.021 },
+      { row: 0.755, h: 4, drift: -6, alpha: 0.2, scale: 0.017 },
+      { row: 0.805, h: 4, drift: 7, alpha: 0.22, scale: 0.014 },
+    ];
+    for (const band of bands) {
+      const baseY = Math.round(this.h * band.row);
+      for (let x = 0; x < this.w; x += BLOCK) {
+        const col = Math.min(this.w - 1, x + BLOCK / 2);
+        const ow = this.shares[col * n + OLD_WOOD_BIOME];
+        if (ow < 0.05) continue;
+        const sample = (this.scroll + x + time * band.drift) * band.scale;
+        const density = Math.max(0, fbm(sample) - 0.32) * 1.4;
+        if (density < 0.08) continue;
+        const a = Math.min(0.28, band.alpha * ow * density);
+        const y = baseY + Math.round(Math.sin(sample * 1.8) * 1.5);
+        L.fillStyle = `rgba(182,204,196,${a.toFixed(3)})`;
+        L.fillRect(x, y, BLOCK, band.h);
       }
     }
   }
@@ -411,11 +615,17 @@ export class Journey implements OutsideView {
       const biome = BIOMES.indexOf(this.dominant(col));
       const variants = set.tufts[biome];
       const sprite = variants[Math.floor(hash(seed + 2) * variants.length)];
-      drawSwaying(L, sprite, Math.round(sx - sprite.w / 2), Math.round(this.h * TUFT_BASE), wind(time * 1.3, lx) * sprite.h * SWAY.tuft);
+      drawSwaying(
+        L,
+        sprite,
+        Math.round(sx - sprite.w / 2),
+        Math.round(this.h * TUFT_BASE),
+        wind(time * 1.3, lx) * sprite.h * SWAY.tuft,
+      );
     }
   }
 
-  /** How many butterflies are about: they like the sun, and the meadow most. */
+  /** How many butterflies are about: they like the sun, and the meadow most (indices 0..2). */
   private butterflyPresence(state: SkyState): number {
     const o = Math.floor(this.w / 2) * BIOMES.length;
     const open = this.shares[o + 1] + 0.5 * this.shares[o + 2] + 0.25 * this.shares[o];

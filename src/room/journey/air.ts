@@ -10,7 +10,8 @@ const BIRD_POSES: [number, number][][] = [
 const BUTTERFLY_COLORS: RGB[] = [[250, 190, 60], [250, 250, 240], [240, 130, 170], [130, 190, 250], [250, 140, 60]];
 const FIREFLY_COLOR = '230,255,130';
 const BUTTERFLIES = 7;
-const FIREFLIES = 34;
+const BASE_FIREFLIES = 34;
+const MAX_FIREFLIES = 56;
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 
@@ -123,20 +124,31 @@ interface Spark {
   speed: number;
 }
 
-/** Fireflies drifting low over the land at dusk and through the night, glowing in turn. */
+/** Fireflies drifting low over the land at dusk and night, and through the Old Wood even by day. */
 export class Fireflies {
   private readonly list: Spark[] = [];
 
   /** `rows` is the band they drift in. Call after the land is tinted, so they glow rather than darken. */
-  draw(ctx: CanvasRenderingContext2D, dt: number, time: number, night: number, w: number, rows: [number, number]): void {
-    if (night < 0.3) return;
+  draw(
+    ctx: CanvasRenderingContext2D,
+    dt: number,
+    time: number,
+    night: number,
+    w: number,
+    rows: [number, number],
+    oldWood = 0,
+  ): void {
+    const nightStrength = night >= 0.3 ? Math.min(1, (night - 0.3) / 0.4) : 0;
+    const strength = Math.max(nightStrength, oldWood * 0.68);
+    if (strength < 0.05) return;
     if (!this.list.length) {
-      for (let i = 0; i < FIREFLIES; i++) {
+      for (let i = 0; i < MAX_FIREFLIES; i++) {
         this.list.push({ x: Math.random() * w, y: rand(rows[0], rows[1]), vx: 0, vy: 0, phase: Math.random() * 6.3, speed: rand(0.6, 1.6) });
       }
     }
-    const strength = Math.min(1, (night - 0.3) / 0.4);
-    for (const f of this.list) {
+    const active = Math.round(BASE_FIREFLIES + (MAX_FIREFLIES - BASE_FIREFLIES) * oldWood);
+    for (let i = 0; i < active; i++) {
+      const f = this.list[i];
       f.vx += rand(-14, 14) * dt;
       f.vy += rand(-14, 14) * dt;
       f.vx = Math.max(-7, Math.min(7, f.vx));
@@ -146,6 +158,7 @@ export class Fireflies {
       if (f.y < rows[0]) f.vy = Math.abs(f.vy);
       if (f.y > rows[1]) f.vy = -Math.abs(f.vy);
       if (f.x < -4) f.x = w + 4;
+      if (f.x > w + 4) f.x = -4;
       const glow = Math.max(0, Math.sin(time * f.speed + f.phase)) ** 3 * strength;
       if (glow < 0.05) continue;
       const x = Math.round(f.x);

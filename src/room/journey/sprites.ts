@@ -13,24 +13,47 @@ export interface Sprite {
 /** Four tones of foliage, lit side first. */
 type Tones = [RGB, RGB, RGB, RGB];
 
-const TONES: Record<'pine' | 'oak' | 'autumn', Tones> = {
+const TONES: Record<'pine' | 'oak' | 'autumn' | 'tallPine' | 'gnarledOak', Tones> = {
   pine: [[66, 128, 90], [44, 100, 72], [30, 76, 60], [20, 56, 48]],
   oak: [[128, 184, 74], [84, 144, 58], [56, 108, 54], [38, 78, 48]],
   autumn: [[240, 184, 64], [216, 122, 46], [174, 72, 42], [122, 48, 38]],
+  tallPine: [[48, 96, 68], [32, 74, 54], [22, 54, 42], [14, 38, 34]],
+  gnarledOak: [[74, 114, 54], [48, 86, 44], [30, 62, 36], [18, 42, 28]],
 };
 const TRUNK: RGB = [98, 68, 44];
 const TRUNK_DARK: RGB = [66, 44, 32];
+const OLD_TRUNK: RGB = [68, 48, 36];
+const OLD_TRUNK_DARK: RGB = [42, 30, 24];
+const MOSS: RGB = [66, 104, 50];
+const MOSS_HANG: RGB = [88, 126, 64];
 const REED: RGB = [128, 158, 74];
 const REED_DARK: RGB = [88, 120, 58];
 const CATTAIL: RGB = [110, 66, 40];
+const FERN_LIGHT: RGB = [82, 128, 60];
+const FERN_DARK: RGB = [44, 82, 42];
+const CAP_RED: RGB = [194, 76, 56];
+const CAP_AMBER: RGB = [208, 154, 74];
+const CAP_SPOT: RGB = [238, 232, 214];
+const STEM_PALE: RGB = [206, 198, 178];
 const HAZE: RGB = [168, 190, 208];
 const VARIANTS = 4;
 /** Rows drawn in one piece when a plant sways: each strip leans a little further than the one below. */
 const STRIP = 4;
 
 /** Heights in stage pixels at the design size of 270 rows, as a lowest and highest. */
-const HEIGHTS: Record<TreeKind | 'reed' | 'tuft', [number, number]> = {
-  pine: [64, 96], oak: [52, 76], autumn: [52, 76], bush: [12, 20], autumnBush: [12, 20], reed: [14, 24], tuft: [6, 10],
+const HEIGHTS: Record<TreeKind | 'reed' | 'tuft' | 'fern' | 'mushroom', [number, number]> = {
+  pine: [64, 96],
+  oak: [52, 76],
+  autumn: [52, 76],
+  bush: [12, 20],
+  autumnBush: [12, 20],
+  tallPine: [76, 108],
+  gnarledOak: [56, 80],
+  mossBush: [13, 21],
+  reed: [14, 24],
+  tuft: [6, 10],
+  fern: [8, 13],
+  mushroom: [5, 8],
 };
 
 /** A grid of pixels built in memory and turned into a picture once. */
@@ -62,18 +85,20 @@ function hazed(tones: Tones, haze: number): Tones {
 }
 
 /** A conifer: stacked tiers that widen toward the base, lit from the left, on a short trunk. */
-function pine(h: number, rnd: () => number, tones: Tones, haze: number): Sprite {
-  const w = Math.round(h * 0.5) | 1;
+function pine(h: number, rnd: () => number, tones: Tones, haze: number, aspect = 0.5, darkBark = false): Sprite {
+  const w = Math.round(h * aspect) | 1;
   const px = new Pixels(w, h);
   const cx = (w - 1) / 2;
   const trunk = Math.max(3, Math.round(h * 0.1));
   const crown = h - trunk;
-  const tiers = 4 + Math.floor(h / 36);
-  const trunkColor = mix(TRUNK, HAZE, haze);
+  const tiers = 4 + Math.floor(h / 32);
+  const trunkBase = darkBark ? OLD_TRUNK : TRUNK;
+  const trunkShadow = darkBark ? OLD_TRUNK_DARK : TRUNK_DARK;
+  const trunkColor = mix(trunkBase, HAZE, haze);
   for (let y = crown; y < h; y++) {
     px.set(Math.round(cx) - 1, y, trunkColor);
     px.set(Math.round(cx), y, trunkColor);
-    px.set(Math.round(cx) + 1, y, mix(TRUNK_DARK, HAZE, haze));
+    px.set(Math.round(cx) + 1, y, mix(trunkShadow, HAZE, haze));
   }
   const [light, mid, dark, darkest] = hazed(tones, haze);
   const palette = [light, mid, dark, darkest];
@@ -93,18 +118,34 @@ function pine(h: number, rnd: () => number, tones: Tones, haze: number): Sprite 
 }
 
 /** A round-crowned tree (or a bush when `trunkShare` is 0): lumps of foliage shaded from the top left. */
-function roundTree(h: number, aspect: number, trunkShare: number, rnd: () => number, tones: Tones, haze: number): Sprite {
+function roundTree(
+  h: number, aspect: number, trunkShare: number, rnd: () => number, tones: Tones, haze: number, gnarled = false,
+): Sprite {
   const w = Math.round(h * aspect);
   const px = new Pixels(w, h);
   const trunkH = Math.round(h * trunkShare);
   const crownH = h - trunkH;
   const cx = (w - 1) / 2;
   const palette = hazed(tones, haze);
-  const trunkColor = mix(TRUNK, HAZE, haze);
-  const bark = Math.max(2, Math.round(w * 0.07));
-  for (let y = Math.round(h * 0.5); y < h; y++) {
-    for (let x = 0; x < bark; x++) px.set(Math.round(cx) - 1 + x, y, x === bark - 1 ? mix(TRUNK_DARK, HAZE, haze) : trunkColor);
+  const trunkColor = mix(gnarled ? OLD_TRUNK : TRUNK, HAZE, haze);
+  const trunkDark = mix(gnarled ? OLD_TRUNK_DARK : TRUNK_DARK, HAZE, haze);
+  const mossColor = mix(MOSS, HAZE, haze);
+  const hangColor = mix(MOSS_HANG, HAZE, haze);
+  const bark = Math.max(2, Math.round(w * (gnarled ? 0.09 : 0.07)));
+
+  if (trunkShare > 0) {
+    const lean = gnarled ? (rnd() < 0.5 ? -1 : 1) : 0;
+    for (let y = Math.round(h * 0.48); y < h; y++) {
+      const bend = gnarled ? Math.round(Math.sin((y / h) * Math.PI) * lean * 2) : 0;
+      const rootSpread = gnarled && y >= h - 3 ? Math.max(0, y - (h - 4)) : 0;
+      for (let x = -rootSpread; x < bark + rootSpread; x++) {
+        const tx = Math.round(cx) - 1 + x + bend;
+        const c = x === bark - 1 + rootSpread ? trunkDark : gnarled && rnd() < 0.16 ? mossColor : trunkColor;
+        px.set(tx, y, c);
+      }
+    }
   }
+
   const main = { x: cx, y: crownH * 0.5, r: Math.min(w / 2, crownH / 2) };
   const lumps = [main];
   for (let i = 0; i < 4; i++) {
@@ -138,6 +179,10 @@ function roundTree(h: number, aspect: number, trunkShare: number, rnd: () => num
       let tone = light > 0.42 ? 0 : light > -0.05 ? 1 : light > -0.5 ? 2 : 3;
       if (y + 1 >= crownH || !inside[(y + 1) * w + x]) tone = 3;
       px.set(x, y, palette[tone]);
+      if (gnarled && tone === 3 && rnd() < 0.22) {
+        const drop = 1 + Math.floor(rnd() * 3);
+        for (let m = 1; m <= drop; m++) px.set(x, y + m, hangColor);
+      }
     }
   }
   return px.toSprite();
@@ -176,12 +221,60 @@ function tuft(h: number, rnd: () => number, base: RGB, haze: number): Sprite {
   return px.toSprite();
 }
 
+/** Arched woodland fern fronds springing from a mossy center. */
+function fern(h: number, rnd: () => number, haze: number): Sprite {
+  const w = Math.max(7, Math.round(h * 1.5)) | 1;
+  const px = new Pixels(w, h);
+  const cx = Math.floor(w / 2);
+  const light = mix(FERN_LIGHT, HAZE, haze);
+  const dark = mix(FERN_DARK, HAZE, haze);
+  const fronds = 3 + Math.floor(rnd() * 3);
+  for (let f = 0; f < fronds; f++) {
+    const dir = f === 0 ? 0 : f % 2 === 1 ? -1 : 1;
+    const span = Math.round((w * 0.45) * (0.55 + rnd() * 0.45));
+    const peak = Math.max(2, Math.round(h * (0.55 + rnd() * 0.4)));
+    for (let step = 0; step <= span; step++) {
+      const t = step / Math.max(1, span);
+      const x = cx + dir * step;
+      const y = h - 1 - Math.round(Math.sin(t * Math.PI * 0.72) * peak);
+      px.set(x, y, t > 0.45 ? light : dark);
+      if (step > 0 && step < span) px.set(x, y + 1, dark);
+    }
+  }
+  return px.toSprite();
+}
+
+/** A tiny cluster of woodland mushrooms. */
+function mushroom(h: number, rnd: () => number, haze: number): Sprite {
+  const w = Math.max(7, Math.round(h * 1.4));
+  const px = new Pixels(w, h);
+  const stem = mix(STEM_PALE, HAZE, haze);
+  const cap = mix(rnd() < 0.6 ? CAP_RED : CAP_AMBER, HAZE, haze);
+  const spot = mix(CAP_SPOT, HAZE, haze);
+  const count = 2 + Math.floor(rnd() * 2);
+  for (let i = 0; i < count; i++) {
+    const mx = Math.max(1, Math.min(w - 2, Math.round(((i + 0.5) / count) * w)));
+    const mh = Math.max(3, h - Math.floor(rnd() * 3));
+    const capY = h - mh;
+    for (let y = capY + 1; y < h; y++) px.set(mx, y, stem);
+    px.set(mx - 1, capY + 1, cap);
+    px.set(mx, capY, cap);
+    px.set(mx + 1, capY + 1, cap);
+    px.set(mx - 1, capY, cap);
+    px.set(mx + 1, capY, cap);
+    if (mh >= 4) px.set(mx, capY, spot);
+  }
+  return px.toSprite();
+}
+
 /** Every plant picture the landscape needs, at one size and haze. */
 export interface PlantSet {
   trees: Record<TreeKind, Sprite[]>;
   reeds: Sprite[];
   /** Grass tufts, one set per biome, in that biome's grass colour. */
   tufts: Sprite[][];
+  ferns: Sprite[];
+  mushrooms: Sprite[];
 }
 
 /** `unit` is the view's rows over 270; `haze` pulls the colours toward the pale of distance (0 near, ~0.45 far). */
@@ -199,9 +292,14 @@ export function buildPlants(unit: number, haze: number, grasses: RGB[]): PlantSe
       autumn: make('autumn', (h) => roundTree(h, 0.9, 0.34, rnd, TONES.autumn, haze)),
       bush: make('bush', (h) => roundTree(h, 1.7, 0, rnd, TONES.oak, haze)),
       autumnBush: make('autumnBush', (h) => roundTree(h, 1.7, 0, rnd, TONES.autumn, haze)),
+      tallPine: make('tallPine', (h) => pine(h, rnd, TONES.tallPine, haze, 0.44, true)),
+      gnarledOak: make('gnarledOak', (h) => roundTree(h, 1.0, 0.36, rnd, TONES.gnarledOak, haze, true)),
+      mossBush: make('mossBush', (h) => roundTree(h, 1.65, 0, rnd, TONES.gnarledOak, haze)),
     },
     reeds: Array.from({ length: VARIANTS }, (_, i) => reeds(size('reed', i), rnd, haze)),
     tufts: grasses.map((grass) => Array.from({ length: VARIANTS }, (_, i) => tuft(size('tuft', i), rnd, grass, haze))),
+    ferns: Array.from({ length: VARIANTS }, (_, i) => fern(size('fern', i), rnd, haze)),
+    mushrooms: Array.from({ length: VARIANTS }, (_, i) => mushroom(size('mushroom', i), rnd, haze)),
   };
 }
 
