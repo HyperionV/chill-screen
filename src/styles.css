@@ -16,7 +16,7 @@
   --accent-ink: #1d1708;
   --danger: #f08a7c;
   --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
-  --font: 'Outfit Variable', 'Segoe UI Variable', sans-serif;
+  --font: 'VT323', 'Courier New', monospace;
   color-scheme: dark;
 }
 
@@ -38,7 +38,7 @@ body {
   background: #04121a;
   color: var(--text);
   font-family: var(--font);
-  font-size: 14px;
+  font-size: 21px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -77,6 +77,12 @@ body.idle #scenery {
   pointer-events: auto;
 }
 
+/* The pixel font has one weight; a browser-made bold would smear its pixels. */
+h2,
+h3 {
+  font-weight: 400;
+}
+
 button,
 input,
 textarea {
@@ -99,7 +105,7 @@ button {
   padding: 5px 9px;
   background: var(--glass-strong);
   box-shadow: var(--frame-soft);
-  font-size: 12.5px;
+  font-size: 19px;
   letter-spacing: 0.01em;
   white-space: nowrap;
   opacity: 0;
@@ -142,8 +148,7 @@ body.idle .dock {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 20px;
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
 
@@ -199,8 +204,7 @@ body.idle .dock {
 
 .panel-title {
   margin: 0;
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 22px;
   letter-spacing: 0.01em;
 }
 
@@ -236,8 +240,7 @@ body.idle .dock {
   border: 0;
   box-shadow: var(--frame-soft);
   background: rgba(255, 255, 255, 0.04);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 20px;
   white-space: nowrap;
   transition: background 0.2s var(--ease);
 }
@@ -265,7 +268,7 @@ body.idle .dock {
   padding: 0;
   background: none;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 19px;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -308,8 +311,7 @@ body.idle .dock {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: 19px;
   white-space: nowrap;
 }
 
@@ -325,13 +327,13 @@ body.idle .dock {
 .quiet-status {
   margin: 0;
   color: var(--faint);
-  font-size: 12.5px;
+  font-size: 19px;
 }
 
 .hint {
   margin: 10px 0 16px;
   color: var(--muted);
-  font-size: 12.5px;
+  font-size: 19px;
   line-height: 1.5;
 }
 
@@ -344,8 +346,7 @@ body.idle .dock {
 
 .field-label {
   color: var(--muted);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 18px;
 }
 
 .field-label-row {
@@ -483,8 +484,7 @@ body.idle .dock {
   margin: 0;
   padding: 10px 16px;
   background: var(--glass-strong);
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 22px;
 }
 
 /* Notes */
@@ -592,14 +592,12 @@ body.idle .dock {
 .timer-phase {
   margin: 8px 0 0;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 20px;
   text-align: center;
 }
 
 .timer-readout {
   font-size: 64px;
-  font-weight: 300;
   line-height: 1;
   letter-spacing: -0.02em;
   text-align: center;

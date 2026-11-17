@@ -12,8 +12,7 @@
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 20px;
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
 

@@ -1,4 +1,5 @@
 import '@fontsource-variable/outfit';
+import '@fontsource/vt323';
 import './styles.css';
 import { SceneSwitch } from './scene/scene-switch';
 import { TankScene } from './scene/tank-scene';
