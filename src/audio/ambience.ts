@@ -1,10 +1,12 @@
 import { hourNow } from '../scene/clock';
 import type { Pace } from '../room/journey/pace';
+import type { LandscapeId } from '../room/landscapes/registry';
 import type { SceneKind } from '../scene/scene-switch';
 
 /** What the soundscape should follow: the scene on screen, how hard it rains, the pace, and the chosen loudness (0 to 1). */
 export interface Mix {
   scene: SceneKind;
+  landscape: LandscapeId;
   rain: number;
   pace: Pace;
   volume: number;
@@ -20,7 +22,7 @@ const MASTER_SCALE = 1.2;
 
 /** How much wind the journey makes at each pace; the other scenes have a steady breeze. */
 const PACE_WIND: Record<Pace, number> = { still: 0.25, slow: 0.4, gentle: 0.6, brisk: 1 };
-const BREEZE: Record<SceneKind, number> = { journey: 1, seaside: 0.5, wallpapers: 0.35, aquarium: 0 };
+const BREEZE: Record<SceneKind, number> = { journey: 1, landscape: 0.5, wallpapers: 0.35, aquarium: 0 };
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 const isDaytime = (): boolean => {
@@ -34,7 +36,7 @@ const isDaytime = (): boolean => {
  * Browsers only allow sound after the person has clicked or pressed a key once, so it starts then.
  */
 export class Ambience {
-  private mix: Mix = { scene: 'journey', rain: 0, pace: 'gentle', volume: 0 };
+  private mix: Mix = { scene: 'journey', landscape: 'seaside', rain: 0, pace: 'gentle', volume: 0 };
   private unlocked = false;
   private ac: AudioContext | null = null;
   private master!: GainNode;
@@ -80,7 +82,7 @@ export class Ambience {
   }
 
   private apply(): void {
-    const { scene, rain, pace, volume } = this.mix;
+    const { scene, landscape, rain, pace, volume } = this.mix;
     const outside = scene !== 'aquarium';
     const night = !isDaytime();
     const wind = BREEZE[scene] * (scene === 'journey' ? PACE_WIND[pace] : 0.6);
@@ -89,7 +91,7 @@ export class Ambience {
     this.settle(this.rainBrightness.frequency, 3200 + 4800 * rain);
     this.settle(this.rainRumble.gain, outside ? rain * rain * 0.3 : 0);
     this.settle(this.wind.gain, wind * 0.22);
-    this.settle(this.waves.gain, scene === 'seaside' ? 0.3 : 0);
+    this.settle(this.waves.gain, scene === 'landscape' && landscape === 'seaside' ? 0.3 : 0);
     this.settle(this.water.gain, scene === 'aquarium' ? 0.2 : 0);
     this.settle(this.crickets.gain, outside && scene !== 'wallpapers' && night ? 0.012 * (1 - rain) : 0);
   }

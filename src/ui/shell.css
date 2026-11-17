@@ -367,12 +367,12 @@ body[data-mode="business"] .focus-float {
   display: none;
 }
 
-.journey-list {
+.choice-list {
   display: grid;
   gap: 2px;
 }
 
-.journey-row {
+.choice-row {
   display: grid;
   gap: 2px;
   padding: 7px 10px;
@@ -382,20 +382,20 @@ body[data-mode="business"] .focus-float {
   text-align: left;
 }
 
-.journey-row:hover {
+.choice-row:hover {
   color: var(--text);
 }
 
-.journey-row[aria-checked="true"] {
+.choice-row[aria-checked="true"] {
   background: rgba(255, 255, 255, 0.1);
   color: var(--text);
 }
 
-.journey-name {
+.choice-name {
   font-size: calc(20px * var(--content-scale, 1));
 }
 
-.journey-hint {
+.choice-hint {
   color: var(--faint);
   font-size: calc(17px * var(--content-scale, 1));
   line-height: 1.25;

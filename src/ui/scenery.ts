@@ -6,15 +6,21 @@ import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch }
 import type { ToolPanel } from './panel';
 import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
-import { JOURNEY_ENTRIES } from '../room/journeys/registry';
-import { journeyList } from './journey-list';
+import { JOURNEYS, JOURNEY_ENTRIES } from '../room/journeys/registry';
+import { choiceList } from './choice-list';
+import { LANDSCAPES, LANDSCAPE_ENTRIES } from '../room/landscapes/registry';
 import { createViewField } from './view-field';
 import { segmented } from './segmented';
 import { createTimeField } from './time-field';
 
-const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Landscape', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
+const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', landscape: 'Landscape', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
 const ROTATION_LABELS: Record<Rotation, string> = { stay: 'Stay', shuffle: 'Shuffle', order: 'In order' };
 const PACE_LABELS: Record<Pace, string> = { still: 'Still', slow: 'Slow', gentle: 'Gentle', brisk: 'Brisk' };
+
+/** True when what is on screen keeps its own sky, so the Time control would change nothing. */
+const hasOwnSky = (scenery: SceneSwitch): boolean =>
+  (scenery.showing === 'journey' && JOURNEY_ENTRIES[scenery.settings.journey].ownSky === true)
+  || (scenery.showing === 'landscape' && LANDSCAPE_ENTRIES[scenery.settings.landscape].ownSky === true);
 
 /** A word for how hard it is raining, shown beside the slider. */
 const rainWord = (level: number): string => (level === 0 ? 'None' : level < 0.35 ? 'Drizzle' : level < 0.7 ? 'Rain' : 'Downpour');
@@ -99,10 +105,11 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
       body.append(field('Pace', segmented('Pace', PACES, s.pace, (pace) => PACE_LABELS[pace], (pace) => scenery.update({ pace }))));
     }
     if (s.scene === 'journey') {
-      body.append(field('Journey', journeyList(s.journey, (journey) => scenery.update({ journey }))));
+      body.append(field('Journey', choiceList('Journey', JOURNEYS, JOURNEY_ENTRIES, s.journey, (journey) => scenery.update({ journey }))));
       return;
     }
-    if (s.scene === 'seaside') {
+    if (s.scene === 'landscape') {
+      body.append(field('Landscape', choiceList('Landscape', LANDSCAPES, LANDSCAPE_ENTRIES, s.landscape, (landscape) => scenery.update({ landscape }))));
       body.append(h('p', { class: 'hint' }, 'Move the pointer across the glass to wipe it.'));
       return;
     }
@@ -136,7 +143,7 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   mountDropZone((files) => void add(files));
   render();
   // The time of day belongs to every scene, so it sits behind a clock button in the header, not among the scene's settings.
-  const time = createPopover(createTimeField(() => scenery.showing === 'journey' && JOURNEY_ENTRIES[scenery.settings.journey].ownSky === true), 'Time of day', true);
+  const time = createPopover(createTimeField(() => hasOwnSky(scenery)), 'Time of day', true);
   const timeButton = h('button', { class: 'icon-btn', title: 'Time of day', 'aria-label': 'Time of day', onclick: () => time.toggle(timeButton) }, icon(ICONS.clock));
   // Fonts are just as universal: the clock and the content each get their own font and size.
   const fonts = createPopover(createFontsField(), 'Fonts', true);

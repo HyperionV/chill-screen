@@ -44,7 +44,7 @@ export function createTimeField(ownSky: () => boolean): HTMLElement {
     const fixed = ownSky();
     slider.disabled = fixed;
     for (const button of [liveButton, ...speedButtons]) button.toggleAttribute('disabled', fixed);
-    note.textContent = fixed ? 'This journey travels through the night on its own, so the time does not change it.' : dayLength(speed);
+    note.textContent = fixed ? 'This scene keeps its own sky, so the time does not change it.' : dayLength(speed);
   }
 
   slider.addEventListener('pointerdown', () => (dragging = true));
