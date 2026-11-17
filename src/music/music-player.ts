@@ -133,6 +133,11 @@ export class MusicPlayer {
           },
           onStateChange: (e) => this.onState(e.data),
           onError: () => void this.skipUnplayable(),
+          // The browser refused to start the video by itself; the play button then shows Play and starts it.
+          onAutoplayBlocked: () => {
+            this.isPlaying = false;
+            this.emit();
+          },
         },
       });
     });

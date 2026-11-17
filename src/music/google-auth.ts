@@ -17,13 +17,14 @@ export class GoogleAuthError extends Error {}
 export class GoogleAuth {
   private token: { value: string; expiresAt: number } | null = null;
   private client: google.accounts.oauth2.TokenClient | null = null;
-  private pending: { resolve: (t: string) => void; reject: (e: Error) => void } | null = null;
+  private pending: { promise: Promise<string>; interactive: boolean; resolve: (t: string) => void; reject: (e: Error) => void } | null = null;
 
   get clientId(): string {
     return readJson(CLIENT_ID_KEY, '', isString);
   }
 
   setClientId(id: string): void {
+    this.fail('The client ID was changed before sign-in finished.');
     writeJson(CLIENT_ID_KEY, id.trim());
     this.client = null;
     this.token = null;
@@ -37,11 +38,20 @@ export class GoogleAuth {
   /** A valid pass, asking Google for one if needed. `interactive` shows the consent window. */
   async getToken(interactive = false): Promise<string> {
     if (this.token && Date.now() < this.token.expiresAt - EXPIRY_MARGIN_MS) return this.token.value;
-    const client = await this.tokenClient();
-    return new Promise<string>((resolve, reject) => {
-      this.pending = { resolve, reject };
+    // One request at a time: a second caller waits for the one already open. Only a person's click takes over from a
+    // quiet background attempt, which may never get an answer if the browser blocks its window.
+    if (this.pending && (!interactive || this.pending.interactive)) return this.pending.promise;
+    this.fail('Replaced by a sign-in you started.');
+    let settled!: { resolve: (t: string) => void; reject: (e: Error) => void };
+    const promise = new Promise<string>((resolve, reject) => (settled = { resolve, reject }));
+    this.pending = { promise, interactive, ...settled };
+    try {
+      const client = await this.tokenClient();
       client.requestAccessToken({ prompt: interactive ? 'consent' : '' });
-    });
+    } catch (err) {
+      this.fail(err instanceof Error ? err.message : 'Google sign-in could not start.');
+    }
+    return promise;
   }
 
   /** Forgets the pass so the next call asks Google again (after YouTube rejects one). */

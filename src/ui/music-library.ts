@@ -7,6 +7,8 @@ export interface Library {
   el: HTMLElement;
   /** Fetches the account's playlists and shows them. */
   load(): Promise<void>;
+  /** Forgets everything shown, so another account never sees the last one's lists. */
+  reset(): void;
 }
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : 'Something went wrong. Try again.');
@@ -102,12 +104,20 @@ export function createLibrary(api: YouTubeApi, player: MusicPlayer, onSignOut: (
       h('button', { class: 'text-btn', onclick: onSignOut }, 'Sign out')),
   );
 
+  function reset(): void {
+    playlists = [];
+    clear(content);
+    search.value = '';
+    status.textContent = '';
+  }
+
   async function load(): Promise<void> {
+    reset();
     const found = await run('Loading your playlists', () => api.myPlaylists());
     if (!found) return;
     playlists = found;
     showPlaylists();
   }
 
-  return { el, load };
+  return { el, load, reset };
 }

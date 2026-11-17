@@ -45,6 +45,8 @@ export function createNowPlaying(player: MusicPlayer): HTMLElement {
     bar.value = String(duration > 0 ? Math.round((time / duration) * PROGRESS_STEPS) : 0);
   };
   bar.addEventListener('pointerdown', () => (dragging = true));
+  // A press and release without moving the thumb fires no change event, so let go here too (after a seek has landed).
+  for (const type of ['pointerup', 'pointercancel']) bar.addEventListener(type, () => window.setTimeout(() => (dragging = false), PROGRESS_REFRESH_MS));
   bar.addEventListener('input', async () => {
     const { duration } = await player.progress();
     elapsed.textContent = clock((Number(bar.value) / PROGRESS_STEPS) * duration);

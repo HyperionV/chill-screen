@@ -17,6 +17,8 @@ export function createMusicPanel(): Panel {
   const player = new MusicPlayer();
   const library = createLibrary(new YouTubeApi(auth), player, () => {
     auth.signOut();
+    library.reset();
+    loaded = false;
     show();
   });
   const browse = h('div', { class: 'music-browse' });
