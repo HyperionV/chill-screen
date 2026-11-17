@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { OutsideView } from '../../view';
-import { LandscapePlaceholder } from '../placeholder';
+import { InterstellarView } from './interstellar-view';
 
 export function createInterstellar(_nightSky: NightSky): OutsideView {
-  return new LandscapePlaceholder('Interstellar');
+  return new InterstellarView();
 }
