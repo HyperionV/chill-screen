@@ -1,6 +1,5 @@
 import './music.css';
 import { clear, h } from './dom';
-import { ICONS } from './icons';
 import { createLibrary } from './music-library';
 import { createSetup } from './music-setup';
 import { GoogleAuth } from '../music/google-auth';
@@ -64,7 +63,6 @@ export function createMusicPanel(player: MusicPlayer): Panel {
   return {
     id: 'music',
     title: 'Music',
-    icon: ICONS.music,
     body: h('div', { class: 'music' }, browse),
     onOpen: () => {
       if (!loaded && auth.clientId && auth.wasSignedIn) void signIn(false);

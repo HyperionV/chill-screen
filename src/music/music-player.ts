@@ -4,6 +4,7 @@ import { readJson, writeJson } from '../store';
 
 const VOLUME_KEY = 'chillscreen.volume';
 const DEFAULT_VOLUME = 60;
+const PROGRESS_REFRESH_MS = 1000;
 const PLAYER_SCRIPT = 'https://www.youtube.com/iframe_api';
 /** YouTube's player states that matter here. */
 const ENDED = 0;
@@ -22,17 +23,19 @@ function loadPlayerScript(): Promise<void> {
 }
 
 /**
- * Plays a queue of YouTube tracks through YouTube's own embedded player, which stays visible in the page (their
- * rules) and keeps playing while panels come and go. Videos that cannot be embedded are skipped.
+ * Plays a queue of YouTube tracks through YouTube's own embedded player and keeps playing while panels come and
+ * go. Only the sound is wanted, so the page keeps the video out of sight. Videos that cannot be embedded are skipped.
  */
 export class MusicPlayer {
-  /** Where the video shows. The page puts this element wherever the player should appear. */
+  /** Holds YouTube's player; the page keeps it in the document, out of sight. */
   readonly el = document.createElement('div');
   private queue: Track[] = [];
   private position = -1;
   private isPlaying = false;
   private player: Promise<YT.Player> | null = null;
   private failuresInARow = 0;
+  private played = 0;
+  private progressTimer = 0;
   private level = readJson(VOLUME_KEY, DEFAULT_VOLUME, isVolume);
   private readonly listeners = new Set<() => void>();
 
@@ -82,14 +85,16 @@ export class MusicPlayer {
     this.emit();
   }
 
-  /** Seconds played and the track's length; both 0 until a video has loaded. */
-  async progress(): Promise<{ time: number; duration: number }> {
-    const player = await this.started();
-    return player ? { time: player.getCurrentTime() || 0, duration: player.getDuration() || 0 } : { time: 0, duration: 0 };
+  /** How far through the current track, 0 to 1; refreshed every second while playing. */
+  get fraction(): number {
+    return this.played;
   }
 
-  async seek(seconds: number): Promise<void> {
-    (await this.started())?.seekTo(seconds, true);
+  private async refreshProgress(): Promise<void> {
+    const player = await this.started();
+    const duration = player?.getDuration() || 0;
+    this.played = player && duration > 0 ? Math.min(1, player.getCurrentTime() / duration) : 0;
+    this.emit();
   }
 
   /** The player if one has been started, without starting one. */
@@ -101,6 +106,7 @@ export class MusicPlayer {
     const n = this.queue.length;
     this.position = ((index % n) + n) % n;
     this.isPlaying = true;
+    this.played = 0;
     this.emit();
     const player = await this.ensurePlayer();
     if (player && this.track) player.loadVideoById(this.track.videoId);
@@ -151,6 +157,8 @@ export class MusicPlayer {
     if (state === PLAYING) this.failuresInARow = 0;
     if (state === PLAYING || state === PAUSED) {
       this.isPlaying = state === PLAYING;
+      clearInterval(this.progressTimer);
+      if (this.isPlaying) this.progressTimer = window.setInterval(() => void this.refreshProgress(), PROGRESS_REFRESH_MS);
       this.emit();
     }
   }

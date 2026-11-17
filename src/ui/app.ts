@@ -3,7 +3,7 @@ import { h, icon } from './dom';
 import { createMode, MODE_LABELS, MODES, type Mode } from './mode';
 import { createMusicPanel } from './music';
 import { createMusicWidget } from './music-widget';
-import { PanelHost, type Panel } from './panel';
+import { PanelHost, type ToolPanel } from './panel';
 import { createSceneryPanel } from './scenery';
 import { createSideCards } from './side-cards';
 import { createTimerPanel } from './timer';
@@ -23,7 +23,18 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
   const player = new MusicPlayer();
   player.el.className = 'audio-host';
   const music = createMusicPanel(player);
-  const tools: Panel[] = [
+  scenery.setMusic({
+    label: () => (player.track ? `${player.track.title} - ${player.track.channel}` : null),
+    playing: () => player.playing,
+    volume: () => player.volume,
+    progress: () => player.fraction,
+    previous: () => void player.previous(),
+    toggle: () => void player.toggle(),
+    next: () => void player.next(),
+    setVolume: (volume) => player.setVolume(volume),
+    openLibrary: () => host.open(music),
+  });
+  const tools: ToolPanel[] = [
     createSceneryPanel(scenery),
     createTimerPanel((label) => {
       timerBadge.textContent = label ?? '';

@@ -57,7 +57,7 @@ export function createLibrary(api: YouTubeApi, player: MusicPlayer, onSignOut: (
       ),
       h('div', { class: 'music-actions' },
         h('button', { class: 'btn primary', onclick: () => void player.playQueue(tracks) }, icon(ICONS.play), 'Play'),
-        h('button', { class: 'btn', onclick: () => void player.playQueue(shuffled(tracks)) }, icon(ICONS.shuffle), 'Shuffle'),
+        h('button', { class: 'btn', onclick: () => void player.playQueue(shuffled(tracks)) }, 'Shuffle'),
       ),
       ...(tracks.length ? tracks.map((t, i) => trackRow(t, tracks, i)) : [h('p', { class: 'quiet-status' }, 'No playable videos here.')]),
     );

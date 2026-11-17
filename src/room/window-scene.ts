@@ -1,5 +1,6 @@
 import type { Look } from '../wallpapers/look';
 import { ClockFace } from './clock-face';
+import { MusicDeck, type DeckControls } from './music-deck';
 import { PixelStage } from '../render/pixel-stage';
 import { Rain } from './rain';
 import type { OutsideView } from './view';
@@ -26,6 +27,7 @@ export class WindowScene {
   private readonly rain = new Rain();
   private readonly clock = new ClockFace();
   private view: OutsideView;
+  private deck: MusicDeck | null = null;
   private rainTarget: number;
   private rainLevel: number;
   private running = false;
@@ -42,7 +44,21 @@ export class WindowScene {
     this.rainTarget = this.rainLevel = rain;
     addEventListener('resize', () => this.running && this.fit());
     canvas.addEventListener('pointermove', (e) => this.onPointer(e.clientX, e.clientY));
-    canvas.addEventListener('pointerleave', () => (this.pointer = null));
+    canvas.addEventListener('pointerleave', () => {
+      this.pointer = null;
+      this.deck?.leave();
+      canvas.classList.remove('over-control');
+    });
+    canvas.addEventListener('click', (e) => {
+      const [x, y] = this.stage.toStage(e.clientX, e.clientY);
+      this.deck?.press(x, y, performance.now() / 1000);
+    });
+  }
+
+  /** Puts the music radio on the windowsill, wired to the given controls. */
+  setDeck(controls: DeckControls): void {
+    this.deck = new MusicDeck(controls);
+    if (this.running) this.deck.layout(this.stage.width, this.window.sillRow);
   }
 
   setView(view: OutsideView): void {
@@ -75,6 +91,7 @@ export class WindowScene {
     if (!this.stage.fit(Math.min(devicePixelRatio || 1, MAX_DPR))) return;
     const { width: w, height: h } = this.stage;
     this.window.layout(w, h);
+    this.deck?.layout(w, this.window.sillRow);
     this.rain.resize(w, h);
     this.view.resize(w, h);
   }
@@ -85,6 +102,7 @@ export class WindowScene {
     if (last && this.rainLevel > 0.02) this.rain.wipe(last.x, last.y, x, y);
     this.pointer = { x, y };
     this.pointerMovedAt = performance.now() / 1000;
+    this.canvas.classList.toggle('over-control', this.deck?.hover(x, y) ?? false);
   }
 
   private tick(now: number): void {
@@ -117,5 +135,7 @@ export class WindowScene {
       this.clock.draw(screen, w / 2, h * CLOCK_Y, h * CLOCK_SIZE, look.tint, this.stage.scale);
       this.rain.drawGlass(screen, dt, this.rainLevel, look);
     });
+    // The radio stands in the room, in front of the glass and any rain on it.
+    this.stage.overlay((screen) => this.deck?.draw(screen, dt, time, look));
   }
 }

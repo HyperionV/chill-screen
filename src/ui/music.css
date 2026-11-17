@@ -22,7 +22,6 @@
 
 .music-setup code {
   padding: 1px 5px;
-  border-radius: 4px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--text);
   font-size: 12px;
@@ -66,7 +65,6 @@
   width: 100%;
   padding: 6px;
   border: 0;
-  border-radius: var(--radius-sm);
   background: transparent;
   text-align: left;
 }
@@ -87,7 +85,6 @@
   width: 56px;
   height: 36px;
   flex: none;
-  border-radius: 4px;
   object-fit: cover;
 }
 
@@ -123,23 +120,24 @@
   margin-top: 12px;
 }
 
-/* The player on the window: sits above the sill, in every mode. */
+/* The plain player bar, only for the aquarium: the window scenes have the pixel radio on the sill instead. */
 .music-widget {
   position: fixed;
   left: 50%;
   bottom: 17vh;
-  display: flex;
+  display: none;
   align-items: center;
   gap: 4px;
   width: min(440px, calc(100vw - 16px));
   padding: 6px 8px;
   overflow: hidden;
-  border-radius: 14px;
   background: var(--glass);
-  border: 1px solid var(--edge);
-  backdrop-filter: blur(18px) saturate(1.2);
-  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.32);
+  box-shadow: var(--frame);
   transform: translateX(-50%);
+}
+
+body[data-scene="aquarium"] .music-widget {
+  display: flex;
 }
 
 .mw-play {
@@ -182,11 +180,6 @@
 .mw-volume-icon {
   display: grid;
   color: var(--muted);
-}
-
-.mw-volume-icon svg {
-  width: 16px;
-  height: 16px;
 }
 
 .mw-volume {

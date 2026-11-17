@@ -2,7 +2,7 @@ import { clear, h, icon } from './dom';
 import { ICONS } from './icons';
 import { PACES, type Pace } from '../room/journey/pace';
 import { ROTATION_MINUTES, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
-import type { Panel } from './panel';
+import type { ToolPanel } from './panel';
 
 const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
 const PACE_LABELS: Record<Pace, string> = { still: 'Still', slow: 'Slow', gentle: 'Gentle', brisk: 'Brisk' };
@@ -32,7 +32,7 @@ function rainField(scenery: SceneSwitch): HTMLElement {
 }
 
 /** The Scenery panel: pick the scene, set the rain, manage wallpapers and how they rotate. */
-export function createSceneryPanel(scenery: SceneSwitch): Panel {
+export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   const body = h('div', { class: 'scenery' });
   const status = h('p', { class: 'quiet-status', 'aria-live': 'polite' });
   const picker = h('input', { type: 'file', accept: 'image/*', multiple: true, hidden: true });

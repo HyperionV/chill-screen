@@ -4,10 +4,14 @@ import { ICONS } from './icons';
 export interface Panel {
   id: string;
   title: string;
-  icon: string;
   body: HTMLElement;
   /** Called each time the panel opens, e.g. to focus its input. */
   onOpen?(): void;
+}
+
+/** A panel with a button in the dock. */
+export interface ToolPanel extends Panel {
+  icon: string;
 }
 
 /** One side panel open at a time, sliding in over the right edge of the tank. */

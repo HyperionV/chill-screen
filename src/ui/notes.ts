@@ -1,5 +1,4 @@
 import { h } from './dom';
-import { ICONS } from './icons';
 import { readJson, writeJson } from '../store';
 import type { Panel } from './panel';
 
@@ -24,7 +23,6 @@ export function createNotesPanel(): Panel {
   return {
     id: 'notes',
     title: 'Notes',
-    icon: ICONS.notes,
     body: h('div', { class: 'notes' }, area, status),
     onOpen: () => area.focus(),
   };

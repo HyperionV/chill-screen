@@ -2,13 +2,12 @@ import { h, icon } from './dom';
 import { ICONS } from './icons';
 import type { MusicPlayer } from '../music/music-player';
 
-const PROGRESS_REFRESH_MS = 1000;
 const IDLE_TITLE = 'Nothing playing';
 const IDLE_HINT = 'Choose something to play';
 
 /**
- * The music player that sits on the window: what is playing, the buttons, the volume, and a way into the library.
- * Only the sound is used; the video stays out of sight.
+ * The player as a plain bar, used only where there is no window to stand a radio on (the aquarium). In the window
+ * scenes the player is the pixel radio on the sill, drawn by the scene itself.
  */
 export function createMusicWidget(player: MusicPlayer, openLibrary: () => void): HTMLElement {
   const title = h('p', { class: 'mw-title' });
@@ -30,12 +29,6 @@ export function createMusicWidget(player: MusicPlayer, openLibrary: () => void):
     progress,
   );
 
-  let timer = 0;
-  const tick = async (): Promise<void> => {
-    const { time, duration } = await player.progress();
-    progress.style.width = `${duration > 0 ? Math.min(100, (time / duration) * 100) : 0}%`;
-  };
-
   const update = (): void => {
     const track = player.track;
     title.textContent = track?.title ?? IDLE_TITLE;
@@ -44,10 +37,7 @@ export function createMusicWidget(player: MusicPlayer, openLibrary: () => void):
     playPause.setAttribute('aria-label', player.playing ? 'Pause' : 'Play');
     playPause.title = player.playing ? 'Pause' : 'Play';
     volume.value = String(player.volume);
-    clearInterval(timer);
-    if (!track) return;
-    void tick();
-    if (player.playing) timer = window.setInterval(() => void tick(), PROGRESS_REFRESH_MS);
+    progress.style.width = `${player.fraction * 100}%`;
   };
   player.onChange(update);
   update();

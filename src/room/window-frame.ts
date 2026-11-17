@@ -53,6 +53,16 @@ export class WindowFrame {
     this.panes.push({ x: left, y: transom + bar, w: right - left, h: sillTop - frame - (transom + bar) });
   }
 
+  /** The stage row that things standing on the sill rest on: a little way back from its front edge. */
+  get sillRow(): number {
+    const o = this.opening;
+    return o.y + o.h + Math.round(this.sillDepth * 0.72);
+  }
+
+  private get sillDepth(): number {
+    return Math.max(4, Math.round(this.h * 0.042));
+  }
+
   /** Limits drawing to the glass, so drops and mist never land on the frame. */
   clipToGlass(ctx: CanvasRenderingContext2D): void {
     ctx.beginPath();
@@ -136,7 +146,7 @@ export class WindowFrame {
   private drawSill(ctx: CanvasRenderingContext2D, o: Rect, trim: RGB, light: RGB, look: Look): void {
     const c = this.casing;
     const top = o.y + o.h;
-    const depth = Math.max(4, Math.round(this.h * 0.042));
+    const depth = this.sillDepth;
     const face = Math.max(3, Math.round(this.h * 0.022));
     const backL = o.x - c;
     const backR = o.x + o.w + c;

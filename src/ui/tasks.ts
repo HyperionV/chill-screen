@@ -67,7 +67,6 @@ export function createTasksPanel(onCountChange: (open: number) => void): Panel {
   return {
     id: 'tasks',
     title: 'Tasks',
-    icon: ICONS.tasks,
     body: h('div', { class: 'tasks' }, input, list, footer),
     onOpen: () => input.focus(),
   };

@@ -1,5 +1,6 @@
 import { Journey } from '../room/journey/journey';
 import { PACES, type Pace } from '../room/journey/pace';
+import type { DeckControls } from '../room/music-deck';
 import { NightSky } from '../room/night-sky';
 import { Sea } from '../room/sea';
 import { Slideshow } from '../room/slideshow';
@@ -80,6 +81,11 @@ export class SceneSwitch {
     this.activate();
   }
 
+  /** Puts the music radio on the window sill, wired to the player. */
+  setMusic(controls: DeckControls): void {
+    this.room.setDeck(controls);
+  }
+
   /** Changes the rain without redrawing the panel, so a slider being dragged is left alone. */
   setRain(rain: number): void {
     this.save({ rain });
@@ -120,6 +126,8 @@ export class SceneSwitch {
 
   private activate(): void {
     const showing = this.showing;
+    // The style sheet needs to know: the aquarium has no window sill, so the player shows as a plain bar there.
+    document.body.dataset.scene = showing;
     if (showing === 'aquarium') {
       this.room.stop();
       this.tank.start();

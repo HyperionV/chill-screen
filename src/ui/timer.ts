@@ -1,7 +1,7 @@
 import { h, icon } from './dom';
 import { ICONS } from './icons';
 import { readJson, writeJson } from '../store';
-import type { Panel } from './panel';
+import type { ToolPanel } from './panel';
 
 const KEY = 'chillscreen.timer';
 const MINUTE = 60_000;
@@ -61,7 +61,7 @@ const format = (ms: number): string => {
 };
 
 /** Focus timer: alternates focus and rest, keeps running across reloads, chimes at each change. */
-export function createTimerPanel(onTick: (label: string | null) => void): Panel {
+export function createTimerPanel(onTick: (label: string | null) => void): ToolPanel {
   const initial: TimerState = { preset: 0, phase: 'focus', endsAt: null, remaining: PRESETS[0].focus * MINUTE, done: 0, day: today() };
   const state = readJson<TimerState>(KEY, initial, isTimerState);
   if (state.day !== today()) {
@@ -142,7 +142,7 @@ export function createTimerPanel(onTick: (label: string | null) => void): Panel 
       presetRow, phaseLabel, readout,
       h('div', { class: 'timer-actions' },
         startBtn,
-        h('button', { class: 'btn', onclick: () => advance(false), title: 'Skip to the next phase' }, icon(ICONS.skip), 'Skip'),
+        h('button', { class: 'btn', onclick: () => advance(false), title: 'Skip to the next phase' }, icon(ICONS.next), 'Skip'),
         h('button', { class: 'btn', onclick: reset, title: 'Back to a fresh focus session' }, icon(ICONS.reset), 'Reset'),
       ),
       doneLabel,
