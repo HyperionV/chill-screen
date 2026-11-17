@@ -6,6 +6,7 @@ import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch }
 import type { ToolPanel } from './panel';
 import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
+import { JOURNEY_ENTRIES } from '../room/journeys/registry';
 import { journeyList } from './journey-list';
 import { createViewField } from './view-field';
 import { segmented } from './segmented';
@@ -135,7 +136,7 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   mountDropZone((files) => void add(files));
   render();
   // The time of day belongs to every scene, so it sits behind a clock button in the header, not among the scene's settings.
-  const time = createPopover(createTimeField(), 'Time of day', true);
+  const time = createPopover(createTimeField(() => scenery.showing === 'journey' && JOURNEY_ENTRIES[scenery.settings.journey].ownSky === true), 'Time of day', true);
   const timeButton = h('button', { class: 'icon-btn', title: 'Time of day', 'aria-label': 'Time of day', onclick: () => time.toggle(timeButton) }, icon(ICONS.clock));
   // Fonts are just as universal: the clock and the content each get their own font and size.
   const fonts = createPopover(createFontsField(), 'Fonts', true);

@@ -23,9 +23,10 @@ let stopPreviousTimer: (() => void) | null = null;
 
 /**
  * The sky's clock: a slider to move to any hour, and a speed to run it at, from held still to a day in four minutes.
- * "Live" goes back to following the wall clock. Keeps itself up to date while on screen.
+ * "Live" goes back to following the wall clock. Keeps itself up to date while on screen. A journey that runs its own
+ * night sky (`ownSky`) ignores all of this, so the card says so and its controls rest.
  */
-export function createTimeField(): HTMLElement {
+export function createTimeField(ownSky: () => boolean): HTMLElement {
   const value = h('span', { class: 'field-value' });
   const slider = h('input', { type: 'range', class: 'slider', min: 0, max: MINUTES_PER_DAY - 1, step: 1, 'aria-label': 'Time of day' });
   const note = h('p', { class: 'hint' });
@@ -40,7 +41,10 @@ export function createTimeField(): HTMLElement {
     if (!dragging) slider.value = String(Math.floor(hour * 60) % MINUTES_PER_DAY);
     liveButton.setAttribute('aria-checked', String(speed === null));
     TIME_SPEEDS.forEach((s, i) => speedButtons[i].setAttribute('aria-checked', String(s === speed)));
-    note.textContent = dayLength(speed);
+    const fixed = ownSky();
+    slider.disabled = fixed;
+    for (const button of [liveButton, ...speedButtons]) button.toggleAttribute('disabled', fixed);
+    note.textContent = fixed ? 'This journey travels through the night on its own, so the time does not change it.' : dayLength(speed);
   }
 
   slider.addEventListener('pointerdown', () => (dragging = true));

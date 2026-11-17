@@ -400,3 +400,9 @@ body[data-mode="business"] .focus-float {
   font-size: calc(17px * var(--content-scale, 1));
   line-height: 1.25;
 }
+
+.seg:disabled,
+.slider:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
