@@ -9,7 +9,7 @@ export function createViewField(): HTMLElement {
     clear(root);
     root.append(
       h('span', { class: 'field-label' }, 'Window frame'),
-      segmented('Window frame', ['keep', 'remove'] as const, frameSetting.framed ? 'keep' : 'remove', (v) => (v === 'keep' ? 'Keep' : 'Remove'), (v) => frameSetting.set(v === 'keep')),
+      segmented('Window frame', ['keep', 'hide'] as const, frameSetting.framed ? 'keep' : 'hide', (v) => (v === 'keep' ? 'Keep' : 'Hide'), (v) => frameSetting.set(v === 'keep')),
       h('p', { class: 'hint' }, frameSetting.framed
         ? 'The view is seen through a window, with the radio on the sill.'
         : 'The view fills the screen, and the radio becomes a floating player.'));
