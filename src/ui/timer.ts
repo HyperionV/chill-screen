@@ -1,36 +1,43 @@
 import { chime } from './chime';
 import { h, icon } from './dom';
 import { ICONS } from './icons';
+import { createPopover } from './popover';
 import { readJson, writeJson } from '../store';
 import type { ToolPanel } from './panel';
 
 const KEY = 'chillscreen.timer';
 const MINUTE = 60_000;
+const MIN_MINUTES = 1;
+const MAX_MINUTES = 180;
 const PRESETS = [
-  { label: '25 / 5', focus: 25, rest: 5 },
-  { label: '50 / 10', focus: 50, rest: 10 },
+  { focus: 25, rest: 5 },
+  { focus: 50, rest: 10 },
 ] as const;
 
 type Phase = 'focus' | 'rest';
 
 interface TimerState {
-  preset: number;
+  /** Minutes for a focus stretch and for the rest after it. */
+  focusMinutes: number;
+  restMinutes: number;
   phase: Phase;
   /** Set while running: when the current phase ends (epoch ms). */
   endsAt: number | null;
   /** Set while paused or idle: what is left of the current phase (ms). */
   remaining: number;
-  /** Focus sessions finished today, and which day that is. */
+  /** Focus sessions finished today (the cycle count), and which day that is. */
   done: number;
   day: string;
 }
 
 const today = (): string => new Date().toDateString();
-const phaseLength = (s: TimerState): number => (s.phase === 'focus' ? PRESETS[s.preset].focus : PRESETS[s.preset].rest) * MINUTE;
+const phaseLength = (s: TimerState): number => (s.phase === 'focus' ? s.focusMinutes : s.restMinutes) * MINUTE;
+const isMinutes = (v: unknown): v is number => typeof v === 'number' && v >= MIN_MINUTES && v <= MAX_MINUTES;
 
 const isTimerState = (v: unknown): v is TimerState =>
   typeof v === 'object' && v !== null &&
-  'preset' in v && typeof v.preset === 'number' && v.preset >= 0 && v.preset < PRESETS.length &&
+  'focusMinutes' in v && isMinutes(v.focusMinutes) &&
+  'restMinutes' in v && isMinutes(v.restMinutes) &&
   'phase' in v && (v.phase === 'focus' || v.phase === 'rest') &&
   'endsAt' in v && (v.endsAt === null || typeof v.endsAt === 'number') &&
   'remaining' in v && typeof v.remaining === 'number' &&
@@ -44,7 +51,7 @@ const format = (ms: number): string => {
 
 /** Focus timer: alternates focus and rest, keeps running across reloads, chimes at each change. */
 export function createTimerPanel(onTick: (label: string | null) => void): ToolPanel {
-  const initial: TimerState = { preset: 0, phase: 'focus', endsAt: null, remaining: PRESETS[0].focus * MINUTE, done: 0, day: today() };
+  const initial: TimerState = { focusMinutes: PRESETS[0].focus, restMinutes: PRESETS[0].rest, phase: 'focus', endsAt: null, remaining: PRESETS[0].focus * MINUTE, done: 0, day: today() };
   const state = readJson<TimerState>(KEY, initial, isTimerState);
   if (state.day !== today()) {
     state.done = 0;
@@ -52,10 +59,9 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
   }
 
   const readout = h('div', { class: 'timer-readout', role: 'timer', 'aria-live': 'off' });
-  const phaseLabel = h('p', { class: 'timer-phase' });
-  const startBtn = h('button', { class: 'btn primary', onclick: () => (state.endsAt ? pause() : start()) });
-  const presetRow = h('div', { class: 'segmented timer-presets', role: 'radiogroup', 'aria-label': 'Timer length' });
-  const doneLabel = h('p', { class: 'quiet-status timer-done' });
+  const cycles = h('span', { class: 'timer-cycles', title: 'Focus sessions finished today' });
+  const startBtn = h('button', { class: 'icon-btn', onclick: () => (state.endsAt ? pause() : start()) });
+  const configBtn = h('button', { class: 'text-btn', onclick: () => config.toggle(configBtn) }, 'Config');
 
   const save = (): void => writeJson(KEY, state);
   const remaining = (): number => (state.endsAt ? state.endsAt - Date.now() : state.remaining);
@@ -88,27 +94,39 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
     render();
   };
 
+  const focusField = h('input', { class: 'field minutes', type: 'number', min: MIN_MINUTES, max: MAX_MINUTES, 'aria-label': 'Focus minutes' });
+  const restField = h('input', { class: 'field minutes', type: 'number', min: MIN_MINUTES, max: MAX_MINUTES, 'aria-label': 'Rest minutes' });
+  const setLengths = (focus: number, rest: number): void => {
+    if (!isMinutes(focus) || !isMinutes(rest)) return;
+    state.focusMinutes = Math.round(focus);
+    state.restMinutes = Math.round(rest);
+    reset();
+  };
+  focusField.addEventListener('change', () => setLengths(focusField.valueAsNumber, state.restMinutes));
+  restField.addEventListener('change', () => setLengths(state.focusMinutes, restField.valueAsNumber));
+
+  const config = createPopover(
+    h('div', { class: 'config' },
+      h('div', { class: 'config-presets' },
+        ...PRESETS.map((p) => h('button', { class: 'text-btn', onclick: () => setLengths(p.focus, p.rest) }, `${p.focus} / ${p.rest}`))),
+      h('label', { class: 'config-row' }, 'Focus', focusField, 'min'),
+      h('label', { class: 'config-row' }, 'Rest', restField, 'min'),
+      h('button', { class: 'text-btn', onclick: () => advance(false) }, 'Skip to the next phase')),
+    'Timer settings');
+
   const render = (): void => {
     const left = remaining();
     readout.textContent = format(left);
-    phaseLabel.textContent = state.phase === 'focus' ? 'Focus' : 'Rest';
-    startBtn.replaceChildren(icon(state.endsAt ? ICONS.pause : ICONS.play), h('span', { class: 'btn-label' }, state.endsAt ? 'Pause' : 'Start'));
-    doneLabel.textContent = state.done === 1 ? '1 focus session today' : `${state.done} focus sessions today`;
-    presetRow.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-checked', String(i === state.preset)));
+    readout.dataset.phase = state.phase;
+    cycles.textContent = `×${state.done}`;
+    startBtn.replaceChildren(icon(state.endsAt ? ICONS.pause : ICONS.play));
+    const startLabel = state.endsAt ? 'Pause' : 'Start';
+    startBtn.title = startLabel;
+    startBtn.setAttribute('aria-label', startLabel);
+    focusField.value = String(state.focusMinutes);
+    restField.value = String(state.restMinutes);
     onTick(state.endsAt ? `${state.phase === 'focus' ? 'Focus' : 'Rest'} ${format(left)}` : null);
   };
-
-  PRESETS.forEach((p, i) => {
-    presetRow.append(
-      h('button', {
-        class: 'seg', role: 'radio', 'aria-checked': String(i === state.preset),
-        onclick: () => {
-          state.preset = i;
-          reset();
-        },
-      }, p.label),
-    );
-  });
 
   window.setInterval(() => {
     if (state.endsAt && Date.now() >= state.endsAt) advance(true);
@@ -118,16 +136,14 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
 
   return {
     id: 'timer',
-    title: 'Focus timer',
+    title: 'Focus',
     icon: ICONS.timer,
     body: h('div', { class: 'timer' },
-      presetRow, phaseLabel, readout,
+      h('div', { class: 'timer-face' }, readout, cycles),
       h('div', { class: 'timer-actions' },
         startBtn,
-        h('button', { class: 'btn timer-skip', onclick: () => advance(false), title: 'Skip to the next phase' }, icon(ICONS.next), h('span', { class: 'btn-label' }, 'Skip')),
-        h('button', { class: 'btn', onclick: reset, title: 'Back to a fresh focus session' }, icon(ICONS.reset), h('span', { class: 'btn-label' }, 'Reset')),
-      ),
-      doneLabel,
+        h('button', { class: 'icon-btn', onclick: reset, title: 'Back to a fresh focus session', 'aria-label': 'Reset' }, icon(ICONS.reset)),
+        configBtn),
     ),
   };
 }

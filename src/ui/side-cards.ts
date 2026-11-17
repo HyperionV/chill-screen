@@ -3,9 +3,9 @@ import { createNotesPanel } from './notes';
 import type { Reminders } from './reminders';
 import { createTasksPanel } from './tasks';
 
-const card = (title: string, body: HTMLElement, grow: boolean): HTMLElement =>
+const card = (title: string, body: HTMLElement, grow: boolean, action?: HTMLElement): HTMLElement =>
   h('section', { class: grow ? 'side-card grow' : 'side-card', 'aria-label': title },
-    h('h2', { class: 'panel-title side-card-title' }, title),
+    h('header', { class: 'side-card-head' }, h('h2', { class: 'panel-title side-card-title' }, title), action),
     h('div', { class: 'side-card-body' }, body));
 
 export interface SideCards {
@@ -19,10 +19,10 @@ export interface SideCards {
  * The style sheet shows them only in that mode.
  */
 export function createSideCards(timerBody: HTMLElement, reminders: Reminders): SideCards {
-  const timerCard = card('Timer', timerBody, false);
+  const timerCard = card('Focus', timerBody, false);
   // The task list already says how many are open, so the open count needs no second home.
   const left = h('div', { class: 'side-col left' }, card('Notes', createNotesPanel().body, true), timerCard);
-  const right = h('div', { class: 'side-col right' }, card('Tasks', createTasksPanel(() => undefined).body, true), card('Reminders', reminders.body, false));
+  const right = h('div', { class: 'side-col right' }, card('Tasks', createTasksPanel(() => undefined).body, true), card('Reminders', reminders.body, false, reminders.action));
   const timerSlot = timerCard.querySelector('.side-card-body');
   return {
     columns: [left, right],

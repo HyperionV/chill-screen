@@ -583,35 +583,48 @@ body.idle .dock {
   justify-content: space-between;
 }
 
-/* Timer */
+/* Timer: the time, a small count of finished sessions beside it, and quiet buttons below. */
 .timer {
   display: grid;
-  gap: 14px;
+  justify-items: start;
+  gap: 4px;
 }
 
-.timer-phase {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 20px;
-  text-align: center;
+.timer-face {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .timer-readout {
-  font-size: 64px;
+  font-size: 40px;
   line-height: 1;
-  letter-spacing: -0.02em;
-  text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+.timer-readout[data-phase="rest"] {
+  color: #9ed3a4;
+}
+
+.timer-cycles {
+  color: var(--faint);
+  font-size: 18px;
 }
 
 .timer-actions {
   display: flex;
-  justify-content: center;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
 }
 
-.timer .quiet-status {
-  text-align: center;
+.timer-actions .icon-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.timer-actions .text-btn {
+  margin-left: 8px;
+  font-size: 17px;
 }
 
 /* Phones: the panel becomes a sheet above the dock; controls keep their size with a larger touch area. */

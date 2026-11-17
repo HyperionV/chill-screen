@@ -1,6 +1,7 @@
 import { chime } from './chime';
 import { clear, h, icon } from './dom';
 import { ICONS } from './icons';
+import { createPopover } from './popover';
 import { readJson, writeJson } from '../store';
 
 const KEY = 'chillscreen.reminders';
@@ -49,8 +50,10 @@ function desktopAlert(text: string, id: string): void {
 }
 
 export interface Reminders {
-  /** The card's contents. */
+  /** The card's contents: the reminders still to come. */
   body: HTMLElement;
+  /** The "New" button for the card's heading; it opens a floating card to make a reminder. */
+  action: HTMLElement;
   /** Banners for reminders that went off; live in the page whatever the mode, so they show in Zen too. */
   banners: HTMLElement;
 }
@@ -86,6 +89,7 @@ export function createReminders(): Reminders {
     reminders.push({ id: crypto.randomUUID(), text: text.value.trim() || DEFAULT_TEXT, at });
     text.value = '';
     time.value = '';
+    form.close();
     // Asked here, in answer to the person's own click, which is the only moment a browser allows it.
     if ('Notification' in window && Notification.permission === 'default') void Notification.requestPermission().then(render);
     commit();
@@ -121,15 +125,19 @@ export function createReminders(): Reminders {
   const quick = QUICK_MINUTES.map((m) =>
     h('button', { class: 'text-btn', title: `Remind me in ${m} minutes`, onclick: () => add(Date.now() + m * MINUTE) }, m < 60 ? `+${m}m` : `+${m / 60}h`));
 
+  const newButton = h('button', { class: 'text-btn', onclick: () => {
+    form.toggle(newButton);
+    text.focus();
+  } }, 'New');
+  const form = createPopover(
+    h('div', { class: 'reminders' },
+      text,
+      h('div', { class: 'reminder-add' }, time, h('button', { class: 'text-btn', onclick: addAtTime }, 'Add'), h('span', { class: 'reminder-quick' }, ...quick))),
+    'New reminder');
+
   window.setInterval(fireDue, 1000);
   render();
   fireDue();
 
-  return {
-    body: h('div', { class: 'reminders' },
-      text,
-      h('div', { class: 'reminder-add' }, time, h('button', { class: 'text-btn', onclick: addAtTime }, 'Add'), h('span', { class: 'reminder-quick' }, ...quick)),
-      list),
-    banners,
-  };
+  return { body: list, action: newButton, banners };
 }
