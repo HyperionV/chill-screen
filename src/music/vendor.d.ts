@@ -20,14 +20,6 @@ declare namespace google.accounts.oauth2 {
 }
 
 declare namespace YT {
-  const enum PlayerState {
-    UNSTARTED = -1,
-    ENDED = 0,
-    PLAYING = 1,
-    PAUSED = 2,
-    BUFFERING = 3,
-    CUED = 5,
-  }
   interface PlayerEvent {
     target: Player;
     data: number;
@@ -47,10 +39,11 @@ declare namespace YT {
       },
     );
     loadVideoById(id: string): void;
-    cueVideoById(id: string): void;
     playVideo(): void;
     pauseVideo(): void;
-    getPlayerState(): number;
+    seekTo(seconds: number, allowSeekAhead: boolean): void;
+    getCurrentTime(): number;
+    getDuration(): number;
     setVolume(volume: number): void;
   }
 }

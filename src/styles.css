@@ -44,9 +44,8 @@ body {
   cursor: crosshair;
 }
 
-#tank[hidden],
-#scenery[hidden] {
-  display: none;
+[hidden] {
+  display: none !important;
 }
 
 body.idle #tank,

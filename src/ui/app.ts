@@ -1,5 +1,6 @@
 import { h, icon } from './dom';
 import { PanelHost, type Panel } from './panel';
+import { createMusicPanel } from './music';
 import { createNotesPanel } from './notes';
 import { createSceneryPanel } from './scenery';
 import { createTasksPanel } from './tasks';
@@ -17,6 +18,7 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
 
   const panels: Panel[] = [
     createSceneryPanel(scenery),
+    createMusicPanel(),
     createNotesPanel(),
     createTasksPanel((open) => (taskCount.textContent = open ? String(open) : '')),
     createTimerPanel((label) => {
