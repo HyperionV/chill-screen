@@ -2,7 +2,7 @@ import { drawText, plainText, textWidth } from '../../render/pixel-font';
 
 const SHOWN_SECONDS = 6;
 const FADE_SECONDS = 1.2;
-const TITLE_ROW = 0.16;
+const TITLE_ROW = 0.262;
 const SIZE = 2;
 
 /** Shows a chapter's name in pixel letters for a few seconds when the chapter changes, fading in and out. */
