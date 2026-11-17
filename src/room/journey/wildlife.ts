@@ -2,7 +2,7 @@ import { memoryCanvas } from '../../render/pixel-stage';
 import type { RGB } from '../../render/color';
 import { BIOMES, blendNumber, weightsAt } from './biomes';
 
-type Kind = 'deer' | 'rabbit' | 'duck';
+type Kind = 'deer' | 'rabbit' | 'fox' | 'duck';
 type Mood = 'graze' | 'stand' | 'walk' | 'flee' | 'sit' | 'hop' | 'drift';
 
 interface Picture {
@@ -14,6 +14,7 @@ interface Picture {
 const DEER_COLORS: Record<string, RGB> = { b: [160, 105, 58], d: [107, 68, 38], w: [236, 220, 192], k: [28, 18, 12], a: [205, 189, 148] };
 const RABBIT_COLORS: Record<string, RGB> = { b: [176, 150, 120], w: [240, 232, 220], k: [30, 22, 18], d: [130, 108, 86] };
 const DUCK_COLORS: Record<string, RGB> = { g: [47, 122, 74], b: [138, 122, 98], y: [224, 176, 48], w: [232, 232, 224] };
+const FOX_COLORS: Record<string, RGB> = { o: [214, 112, 48], w: [250, 244, 232], k: [34, 22, 18] };
 
 /** Pictures drawn as rows of letters, one letter a pixel, facing right. A dot is clear. */
 const DEER_UP = [
@@ -30,6 +31,14 @@ const DEER_GRAZE = [
 ];
 const RABBIT = ['....b.b.', '....b.b.', '...bbbbk', '...bbbb.', '.bbbbbb.', 'wbbbbbb.', '.bbbbbb.', '..d..d..'];
 const DUCK = ['.....gg.', '..bbbggy', '.bbbbbb.', 'wbbbbb..'];
+const FOX_STAND = [
+  '.........k.k..', '.........ooo..', 'ww......oook..', 'wooooooooooowk',
+  '.oooooooowww..', '..oo.oo..ow...', '...k.k...k.k..',
+];
+const FOX_TROT = [
+  '.........k.k..', '.........ooo..', 'ww......oook..', 'wooooooooooowk',
+  '.oooooooowww..', '..oo.oo..ow...', '..k...k.k...k.',
+];
 
 function bake(rows: string[], colors: Record<string, RGB>): Picture {
   const w = rows[0].length;
@@ -49,6 +58,8 @@ const PICTURES = {
   deerGraze: bake(DEER_GRAZE, DEER_COLORS),
   rabbit: bake(RABBIT, RABBIT_COLORS),
   duck: bake(DUCK, DUCK_COLORS),
+  foxStand: bake(FOX_STAND, FOX_COLORS),
+  foxTrot: bake(FOX_TROT, FOX_COLORS),
 };
 
 interface Animal {
@@ -86,10 +97,12 @@ export interface Rows {
 const MAX_ANIMALS = 8;
 const SPAWN_STEP = 80;
 const FLEE_RADIUS = 28;
+/** Foxes spend most of their time walking, with short rests and a faster escape stride. */
+const FOX = { walkSpeed: 11, fleeSpeed: 70, walkRate: 4, fleeRate: 10, sitChance: 0.25, sitMin: 2, sitMax: 5, walkMin: 4, walkMax: 8 };
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 
 /**
- * The animals met along the road: deer that graze, look up and wander, rabbits that sit and hop, ducks on the
+ * The animals met along the road: deer that graze, rabbits that hop, foxes that roam and rest, ducks on the
  * lake. They keep their own pace as the scenery scrolls past, and bolt from the pointer when it comes close.
  */
 export class Wildlife {
@@ -126,16 +139,19 @@ export class Wildlife {
     const roll = Math.random();
     const deer = chance('deer');
     const rabbit = chance('rabbit');
+    const fox = chance('fox');
     const duck = chance('duck');
     let kind: Kind | null = null;
     if (roll < deer && lake < 0.25) kind = 'deer';
     else if (roll < deer + rabbit && lake < 0.25) kind = 'rabbit';
-    else if (roll < deer + rabbit + duck && lake > 0.7) kind = 'duck';
+    else if (roll < deer + rabbit + fox && lake < 0.25) kind = 'fox';
+    else if (roll < deer + rabbit + fox + duck && lake > 0.7) kind = 'duck';
     if (!kind) return;
     const row = kind === 'duck' ? rand(rows.lakeTop + 4, rows.lakeBottom - 2) : rand(rows.dryTop, rows.dryBottom - 3);
     this.animals.push({
       kind, x: x + rand(-20, 20), y: Math.round(row), dir: Math.random() < 0.5 ? 1 : -1,
-      mood: kind === 'rabbit' ? 'sit' : kind === 'duck' ? 'drift' : 'graze', timer: rand(1, 4), clock: 0, seed: Math.random() * 100,
+      mood: kind === 'rabbit' ? 'sit' : kind === 'duck' ? 'drift' : kind === 'fox' ? 'walk' : 'graze',
+      timer: rand(1, 4), clock: 0, seed: Math.random() * 100,
     });
   }
 
@@ -149,8 +165,8 @@ export class Wildlife {
       a.timer = rand(2, 3.2);
     }
     if (a.mood === 'flee') {
-      a.x += a.dir * (a.kind === 'deer' ? 62 : 48) * dt;
-    } else if (a.mood === 'walk') a.x += a.dir * 8 * dt;
+      a.x += a.dir * (a.kind === 'fox' ? FOX.fleeSpeed : a.kind === 'deer' ? 62 : 48) * dt;
+    } else if (a.mood === 'walk') a.x += a.dir * (a.kind === 'fox' ? FOX.walkSpeed : 8) * dt;
     else if (a.mood === 'hop') a.x += a.dir * 22 * dt;
     else if (a.mood === 'drift') a.x += a.dir * 5 * dt;
     if (a.timer > 0) return;
@@ -167,6 +183,9 @@ export class Wildlife {
       a.mood = Math.random() < 0.55 ? 'sit' : 'hop';
       if (a.mood === 'hop') a.dir = Math.random() < 0.5 ? 1 : -1;
       a.timer = a.mood === 'hop' ? rand(0.7, 2) : rand(1.5, 5);
+    } else if (a.kind === 'fox') {
+      a.mood = a.mood !== 'sit' && Math.random() < FOX.sitChance ? 'sit' : 'walk';
+      a.timer = a.mood === 'sit' ? rand(FOX.sitMin, FOX.sitMax) : rand(FOX.walkMin, FOX.walkMax);
     } else {
       if (Math.random() < 0.3) a.dir = a.dir === 1 ? -1 : 1;
       a.timer = rand(4, 10);
@@ -204,6 +223,11 @@ export class Wildlife {
   private picture(a: Animal): Picture {
     if (a.kind === 'rabbit') return PICTURES.rabbit;
     if (a.kind === 'duck') return PICTURES.duck;
+    if (a.kind === 'fox') {
+      if (a.mood === 'sit') return PICTURES.foxStand;
+      const rate = a.mood === 'flee' ? FOX.fleeRate : FOX.walkRate;
+      return Math.floor(a.clock * rate) % 2 === 0 ? PICTURES.foxStand : PICTURES.foxTrot;
+    }
     if (a.mood === 'graze') return PICTURES.deerGraze;
     if (a.mood === 'walk' || a.mood === 'flee') {
       const rate = a.mood === 'flee' ? 9 : 3;

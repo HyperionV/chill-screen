@@ -18,31 +18,31 @@ export interface Biome {
   flowerDensity: number;
   /** 1 where the land gives way to a lake. */
   lake: number;
-  /** Chance per 80 stage pixels of the road that a deer, a rabbit or a duck is met here. */
-  wildlife: { deer: number; rabbit: number; duck: number };
+  /** Chance per 80 stage pixels of the road that a deer, rabbit, fox or duck is met here. */
+  wildlife: { deer: number; rabbit: number; fox: number; duck: number };
 }
 
 export const BIOMES: Biome[] = [
   {
     grass: [58, 110, 52], grassDark: [40, 88, 44], hill: [58, 100, 86], mountain: [86, 112, 140],
     trees: 2.1, kinds: [['pine', 0.55], ['oak', 0.25], ['bush', 0.2]],
-    flowers: [], flowerDensity: 0, lake: 0, wildlife: { deer: 0.08, rabbit: 0.1, duck: 0 },
+    flowers: [], flowerDensity: 0, lake: 0, wildlife: { deer: 0.08, rabbit: 0.1, fox: 0.05, duck: 0 },
   },
   {
     grass: [112, 168, 70], grassDark: [88, 142, 58], hill: [96, 150, 102], mountain: [118, 142, 170],
     trees: 0.55, kinds: [['oak', 0.5], ['bush', 0.5]],
     flowers: [[250, 250, 240], [250, 214, 72], [240, 130, 170], [170, 150, 230]], flowerDensity: 0.55, lake: 0,
-    wildlife: { deer: 0.16, rabbit: 0.22, duck: 0 },
+    wildlife: { deer: 0.16, rabbit: 0.22, fox: 0.03, duck: 0 },
   },
   {
     grass: [74, 134, 72], grassDark: [54, 108, 60], hill: [74, 120, 110], mountain: [96, 124, 156],
     trees: 0.9, kinds: [['pine', 0.4], ['oak', 0.3], ['bush', 0.3]],
-    flowers: [[250, 250, 240], [170, 150, 230]], flowerDensity: 0.12, lake: 1, wildlife: { deer: 0.05, rabbit: 0.1, duck: 0.35 },
+    flowers: [[250, 250, 240], [170, 150, 230]], flowerDensity: 0.12, lake: 1, wildlife: { deer: 0.05, rabbit: 0.1, fox: 0, duck: 0.35 },
   },
   {
     grass: [150, 142, 66], grassDark: [122, 110, 52], hill: [138, 112, 72], mountain: [140, 122, 128],
     trees: 1.7, kinds: [['autumn', 0.7], ['pine', 0.1], ['autumnBush', 0.2]],
-    flowers: [], flowerDensity: 0, lake: 0, wildlife: { deer: 0.12, rabbit: 0.14, duck: 0 },
+    flowers: [], flowerDensity: 0, lake: 0, wildlife: { deer: 0.12, rabbit: 0.14, fox: 0.04, duck: 0 },
   },
 ];
 

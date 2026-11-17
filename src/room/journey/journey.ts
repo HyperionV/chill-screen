@@ -7,6 +7,7 @@ import { SkyDome, clamp01, type SkyState } from '../sky';
 import type { OutsideView, ViewFrame } from '../view';
 import { Birds, Butterflies, Fireflies } from './air';
 import { BIOMES, SEGMENT, blend, blendNumber, weightsAt, type Biome, type TreeKind } from './biomes';
+import type { Pace } from './pace';
 import { buildPlants, drawSwaying, wind, type PlantSet, type Sprite } from './sprites';
 import { Wildlife, type Rows, type Standing } from './wildlife';
 
@@ -24,6 +25,8 @@ const TUFT_BASE = 0.832;
 const MID_BASE = 0.665;
 /** How fast the near ground slides past, in stage pixels a second at the design size of 270 rows. */
 const SPEED = 9;
+/** Scale only the road's motion so the wind and animals keep their own clocks. */
+const PACE_MULTIPLIERS: Record<Pace, number> = { still: 0, slow: 0.4, gentle: 1, brisk: 2.2 };
 const DESIGN_ROWS = 270;
 /** Colours are worked out once per this many columns: they change too slowly across the view to show. */
 const BLOCK = 8;
@@ -75,6 +78,7 @@ export class Journey implements OutsideView {
   private h = 0;
   private unit = 1;
   private scroll = 0;
+  private multiplier = PACE_MULTIPLIERS.gentle;
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [128, 128, 128] };
   private readonly dome: SkyDome;
   private readonly land = memoryCanvas(1, 1);
@@ -95,6 +99,10 @@ export class Journey implements OutsideView {
     this.dome.fillSkyCells(this.look);
   }
 
+  setPace(pace: Pace): void {
+    this.multiplier = PACE_MULTIPLIERS[pace];
+  }
+
   resize(w: number, h: number): void {
     this.w = w;
     this.h = h;
@@ -113,7 +121,7 @@ export class Journey implements OutsideView {
 
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look {
     const state = this.dome.stateAt(hourNow());
-    this.scroll += SPEED * this.unit * frame.dt;
+    this.scroll += SPEED * this.multiplier * this.unit * frame.dt;
     this.prepare(state);
     this.updateLook(state);
     this.dome.draw(ctx, state, frame, this.look);

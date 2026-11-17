@@ -1,4 +1,5 @@
 import { Journey } from '../room/journey/journey';
+import { PACES, type Pace } from '../room/journey/pace';
 import { NightSky } from '../room/night-sky';
 import { Sea } from '../room/sea';
 import { Slideshow } from '../room/slideshow';
@@ -18,10 +19,11 @@ export interface ScenerySettings {
   every: number;
   /** 0 is no rain, 1 a downpour. */
   rain: number;
+  pace: Pace;
 }
 
 const KEY = 'chillscreen.scenery';
-const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rain: 0 };
+const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rain: 0, pace: 'gentle' };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -31,7 +33,8 @@ function loadSettings(): ScenerySettings {
   const scene = SCENES.find((s) => s === saved.scene) ?? DEFAULTS.scene;
   const every = ROTATION_MINUTES.find((m) => m === saved.every) ?? DEFAULTS.every;
   const rain = typeof saved.rain === 'number' && saved.rain >= 0 && saved.rain <= 1 ? saved.rain : DEFAULTS.rain;
-  return { scene, every, rain };
+  const pace = PACES.find((p) => p === saved.pace) ?? DEFAULTS.pace;
+  return { scene, every, rain, pace };
 }
 
 /** Decides which scene runs (only one at a time, to stay light), and keeps the wallpaper list and scenery settings. */
@@ -47,6 +50,7 @@ export class SceneSwitch {
   constructor(private readonly tank: TankScene, sceneryCanvas: HTMLCanvasElement) {
     const nightSky = new NightSky();
     this.journey = new Journey(nightSky);
+    this.journey.setPace(this.settings.pace);
     this.sea = new Sea(nightSky);
     this.slideshow = new Slideshow(nightSky, this.settings.every);
     this.room = new WindowScene(sceneryCanvas, this.journey, this.settings.rain);
@@ -71,6 +75,7 @@ export class SceneSwitch {
 
   update(change: Partial<ScenerySettings>): void {
     this.save(change);
+    this.journey.setPace(this.settings.pace);
     this.slideshow.setEvery(this.settings.every);
     this.activate();
   }

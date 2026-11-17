@@ -1,9 +1,11 @@
 import { clear, h, icon } from './dom';
 import { ICONS } from './icons';
+import { PACES, type Pace } from '../room/journey/pace';
 import { ROTATION_MINUTES, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
 import type { Panel } from './panel';
 
 const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
+const PACE_LABELS: Record<Pace, string> = { still: 'Still', slow: 'Slow', gentle: 'Gentle', brisk: 'Brisk' };
 
 /** A word for how hard it is raining, shown beside the slider. */
 const rainWord = (level: number): string => (level === 0 ? 'None' : level < 0.35 ? 'Drizzle' : level < 0.7 ? 'Rain' : 'Downpour');
@@ -71,9 +73,12 @@ export function createSceneryPanel(scenery: SceneSwitch): Panel {
     body.append(field('Scene', segmented('Scene', SCENES, s.scene, (v) => SCENE_LABELS[v], (scene) => scenery.update({ scene }))));
     if (s.scene === 'aquarium') return;
     body.append(rainField(scenery));
+    if (s.scene === 'journey') {
+      body.append(field('Pace', segmented('Pace', PACES, s.pace, (pace) => PACE_LABELS[pace], (pace) => scenery.update({ pace }))));
+    }
     if (s.scene === 'journey' || s.scene === 'seaside') {
       body.append(h('p', { class: 'hint' }, s.scene === 'journey'
-        ? 'A slow ride through forest, meadow, lake and autumn woods. Move the pointer over the grass to startle the animals, and across the glass to wipe it.'
+        ? 'Forest, meadow, lake and autumn woods at your pace. Move the pointer over the grass to startle the animals, and across the glass to wipe it.'
         : 'Move the pointer across the glass to wipe it.'));
       return;
     }
