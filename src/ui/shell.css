@@ -105,22 +105,62 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   display: none;
 }
 
-/* The timer, made compact for its card. */
+/* The timer in its card: just the time and two quiet icon buttons. Presets, skip and the day's count stay in the dock panel. */
 .side-card .timer {
-  gap: 8px;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0 14px;
+}
+
+.side-card .timer-presets,
+.side-card .timer-skip,
+.side-card .timer-done,
+.side-card .btn-label {
+  display: none;
 }
 
 .side-card .timer-phase {
+  grid-column: 1 / -1;
   margin: 0;
+  text-align: left;
+  font-size: 18px;
+  color: var(--faint);
 }
 
 .side-card .timer-readout {
-  font-size: 48px;
+  font-size: 40px;
 }
 
-.side-card .segmented {
-  background: transparent;
+.side-card .timer-actions {
+  justify-content: flex-start;
+  gap: 2px;
+}
+
+.side-card .timer .btn {
+  width: 34px;
   padding: 0;
+  justify-content: center;
+  box-shadow: none;
+  background: transparent;
+  color: var(--muted);
+}
+
+.side-card .timer .btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.side-card .timer .btn.primary {
+  color: var(--accent);
+}
+
+.side-card-title {
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.side-card .notes-saved {
+  display: none;
 }
 
 /* Reminders. */
@@ -137,12 +177,10 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 }
 
 .reminder-add .time-field {
-  width: 118px;
+  width: 104px;
+  height: 30px;
   flex: none;
-}
-
-.reminder-add .btn {
-  height: 34px;
+  color: var(--muted);
 }
 
 .reminder-quick {
@@ -153,12 +191,14 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 .reminder-main {
   flex: 1;
   min-width: 0;
-  display: grid;
-  line-height: 1.2;
+  display: flex;
+  gap: 10px;
+  line-height: 1.25;
 }
 
 .reminder-time {
-  color: var(--accent);
+  flex: none;
+  color: var(--muted);
 }
 
 .side-card-body {

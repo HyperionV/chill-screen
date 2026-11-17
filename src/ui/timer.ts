@@ -54,8 +54,8 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
   const readout = h('div', { class: 'timer-readout', role: 'timer', 'aria-live': 'off' });
   const phaseLabel = h('p', { class: 'timer-phase' });
   const startBtn = h('button', { class: 'btn primary', onclick: () => (state.endsAt ? pause() : start()) });
-  const presetRow = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Timer length' });
-  const doneLabel = h('p', { class: 'quiet-status' });
+  const presetRow = h('div', { class: 'segmented timer-presets', role: 'radiogroup', 'aria-label': 'Timer length' });
+  const doneLabel = h('p', { class: 'quiet-status timer-done' });
 
   const save = (): void => writeJson(KEY, state);
   const remaining = (): number => (state.endsAt ? state.endsAt - Date.now() : state.remaining);
@@ -92,7 +92,7 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
     const left = remaining();
     readout.textContent = format(left);
     phaseLabel.textContent = state.phase === 'focus' ? 'Focus' : 'Rest';
-    startBtn.replaceChildren(icon(state.endsAt ? ICONS.pause : ICONS.play), state.endsAt ? 'Pause' : 'Start');
+    startBtn.replaceChildren(icon(state.endsAt ? ICONS.pause : ICONS.play), h('span', { class: 'btn-label' }, state.endsAt ? 'Pause' : 'Start'));
     doneLabel.textContent = state.done === 1 ? '1 focus session today' : `${state.done} focus sessions today`;
     presetRow.querySelectorAll('button').forEach((b, i) => b.setAttribute('aria-checked', String(i === state.preset)));
     onTick(state.endsAt ? `${state.phase === 'focus' ? 'Focus' : 'Rest'} ${format(left)}` : null);
@@ -124,8 +124,8 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
       presetRow, phaseLabel, readout,
       h('div', { class: 'timer-actions' },
         startBtn,
-        h('button', { class: 'btn', onclick: () => advance(false), title: 'Skip to the next phase' }, icon(ICONS.next), 'Skip'),
-        h('button', { class: 'btn', onclick: reset, title: 'Back to a fresh focus session' }, icon(ICONS.reset), 'Reset'),
+        h('button', { class: 'btn timer-skip', onclick: () => advance(false), title: 'Skip to the next phase' }, icon(ICONS.next), h('span', { class: 'btn-label' }, 'Skip')),
+        h('button', { class: 'btn', onclick: reset, title: 'Back to a fresh focus session' }, icon(ICONS.reset), h('span', { class: 'btn-label' }, 'Reset')),
       ),
       doneLabel,
     ),

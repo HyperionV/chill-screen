@@ -32,10 +32,11 @@ function nextOccurrence(hhmm: string): number {
   return at.getTime();
 }
 
+/** "11:19" for today; a short weekday in front for any other day. */
 function whenLabel(at: number): string {
-  const time = new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  const days = Math.round((new Date(at).setHours(0, 0, 0, 0) - new Date().setHours(0, 0, 0, 0)) / 86_400_000);
-  return days <= 0 ? time : days === 1 ? `${time} tomorrow` : `${time} +${days}d`;
+  const date = new Date(at);
+  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+  return date.toDateString() === new Date().toDateString() ? time : `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
 }
 
 function desktopAlert(text: string, id: string): void {
@@ -60,7 +61,6 @@ export function createReminders(): Reminders {
   const text = h('input', { class: 'field', type: 'text', placeholder: 'Remind me to…', 'aria-label': 'Reminder', maxlength: 120 });
   const time = h('input', { class: 'field time-field', type: 'time', 'aria-label': 'Time' });
   const list = h('ul', { class: 'task-list' });
-  const status = h('p', { class: 'quiet-status' });
   const banners = h('div', { class: 'banners', role: 'alert' });
 
   const commit = (): void => {
@@ -80,8 +80,6 @@ export function createReminders(): Reminders {
         ),
       );
     }
-    const blocked = 'Notification' in window && Notification.permission === 'denied';
-    status.textContent = blocked ? 'Desktop alerts are blocked in this browser; the banner still shows.' : reminders.length === 0 ? 'Nothing to remember right now.' : '';
   };
 
   const add = (at: number): void => {
@@ -130,9 +128,8 @@ export function createReminders(): Reminders {
   return {
     body: h('div', { class: 'reminders' },
       text,
-      h('div', { class: 'reminder-add' }, time, h('button', { class: 'btn', onclick: addAtTime }, 'Add'), h('span', { class: 'reminder-quick' }, ...quick)),
-      list,
-      status),
+      h('div', { class: 'reminder-add' }, time, h('button', { class: 'text-btn', onclick: addAtTime }, 'Add'), h('span', { class: 'reminder-quick' }, ...quick)),
+      list),
     banners,
   };
 }

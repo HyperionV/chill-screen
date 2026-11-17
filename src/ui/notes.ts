@@ -10,7 +10,7 @@ const isString = (v: unknown): v is string => typeof v === 'string';
 export function createNotesPanel(): Panel {
   const area = h('textarea', { class: 'notes-area', placeholder: 'Thoughts, links, the thing you must not forget…', spellcheck: 'true', 'aria-label': 'Notes' });
   area.value = readJson(KEY, '', isString);
-  const status = h('p', { class: 'quiet-status' }, area.value ? 'Saved' : '');
+  const status = h('p', { class: 'quiet-status notes-saved' }, area.value ? 'Saved' : '');
   let timer = 0;
   area.addEventListener('input', () => {
     status.textContent = '';
