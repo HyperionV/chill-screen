@@ -266,6 +266,10 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   font-size: 18px;
 }
 
+.popover:has(.time-field) {
+  width: 320px;
+}
+
 .config {
   display: grid;
   gap: 10px;

@@ -7,6 +7,8 @@ export interface Panel {
   body: HTMLElement;
   /** A small button shown in the header beside the title. */
   action?: HTMLElement;
+  /** A small button shown in the header just before the close button. */
+  endAction?: HTMLElement;
   /** Called each time the panel opens, e.g. to focus its input. */
   onOpen?(): void;
 }
@@ -21,13 +23,14 @@ export class PanelHost {
   readonly el: HTMLElement;
   private readonly titleEl = h('h2', { class: 'panel-title' });
   private readonly actionSlot = h('span', { class: 'panel-action' });
+  private readonly endSlot = h('span', { class: 'panel-action' });
   private readonly content = h('div', { class: 'panel-body' });
   private current: Panel | null = null;
   private readonly listeners = new Set<(id: string | null) => void>();
 
   constructor() {
     const close = h('button', { class: 'icon-btn', 'aria-label': 'Close panel', title: 'Close (Esc)', onclick: () => this.close() }, icon(ICONS.close));
-    this.el = h('aside', { class: 'panel', 'aria-hidden': 'true' }, h('header', { class: 'panel-head' }, h('div', { class: 'panel-heading' }, this.titleEl, this.actionSlot), close), this.content);
+    this.el = h('aside', { class: 'panel', 'aria-hidden': 'true' }, h('header', { class: 'panel-head' }, h('div', { class: 'panel-heading' }, this.titleEl, this.actionSlot), h('div', { class: 'panel-heading' }, this.endSlot, close)), this.content);
     addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && this.current) this.close();
     });
@@ -50,6 +53,7 @@ export class PanelHost {
     this.current = panel;
     this.titleEl.textContent = panel.title;
     this.actionSlot.replaceChildren(...(panel.action ? [panel.action] : []));
+    this.endSlot.replaceChildren(...(panel.endAction ? [panel.endAction] : []));
     // Bodies stay in the page once shown, so a playing video is not torn down when another panel opens.
     if (panel.body.parentElement !== this.content) this.content.append(panel.body);
     for (const body of this.content.querySelectorAll<HTMLElement>(':scope > *')) body.hidden = body !== panel.body;

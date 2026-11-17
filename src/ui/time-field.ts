@@ -58,7 +58,7 @@ export function createTimeField(): HTMLElement {
   stopPreviousTimer = () => window.clearInterval(timer);
   refresh();
 
-  return h('div', {},
+  return h('div', { class: 'time-field' },
     h('div', { class: 'field-row' },
       h('span', { class: 'field-label' }, h('span', { class: 'field-label-row' }, 'Time', value)),
       slider),
