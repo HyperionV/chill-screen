@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { OutsideView } from '../../view';
-import { LandscapePlaceholder } from '../placeholder';
+import { AlpinePeakView } from './alpine-view';
 
-export function createAlpinePeak(_nightSky: NightSky): OutsideView {
-  return new LandscapePlaceholder('Alpine Peak');
+export function createAlpinePeak(nightSky: NightSky): OutsideView {
+  return new AlpinePeakView(nightSky);
 }
