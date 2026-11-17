@@ -104,12 +104,13 @@ export class WindowScene {
     const look = this.view.draw(ctx, { dt, time }) ?? WAITING_LOOK;
 
     this.rain.drawOutside(ctx, dt, this.rainLevel, look);
-    this.clock.draw(ctx, w / 2, h * CLOCK_Y, h * CLOCK_SIZE, look.tint);
-    ctx.save();
-    this.window.clipToGlass(ctx);
-    this.rain.drawGlass(ctx, dt, this.rainLevel, look);
-    ctx.restore();
     this.window.draw(ctx, look);
     this.stage.present();
+    // The time and the weather on the glass are drawn on the screen itself, so the lettering stays sharp.
+    this.stage.overlay((screen) => {
+      this.window.clipToGlass(screen);
+      this.clock.draw(screen, w / 2, h * CLOCK_Y, h * CLOCK_SIZE, look.tint, this.stage.scale);
+      this.rain.drawGlass(screen, dt, this.rainLevel, look);
+    });
   }
 }

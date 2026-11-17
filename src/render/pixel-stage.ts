@@ -107,4 +107,15 @@ export class PixelStage {
     this.screen.imageSmoothingEnabled = false;
     this.screen.drawImage(this.canvas, 0, 0, w * this.scale, h * this.scale);
   }
+
+  /**
+   * Draws straight on the screen after `present()`, with the origin and units of the stage, so full-resolution or
+   * smooth things (lettering, mist) can sit over the pixel scene without being snapped to its palette.
+   */
+  overlay(draw: (ctx: CanvasRenderingContext2D) => void): void {
+    this.screen.save();
+    this.screen.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    draw(this.screen);
+    this.screen.restore();
+  }
 }

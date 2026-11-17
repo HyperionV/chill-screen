@@ -127,6 +127,7 @@ export class Rain {
     if (level < 0.01 && !this.drops.length) return;
     this.drawMist(ctx, level, look);
     const sprites = this.spritesFor(look);
+    ctx.imageSmoothingEnabled = false;
     for (const d of this.drops) {
       const s = sprites[sizeOf(d.mass)];
       ctx.drawImage(s, Math.round(d.x - s.width / 2), Math.round(d.y - s.height / 2));
