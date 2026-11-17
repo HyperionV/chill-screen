@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { JourneyView } from '../journey-view';
-import { Placeholder } from '../placeholder';
+import { CanalView } from './view';
 
-export function createCanal(_nightSky: NightSky): JourneyView {
-  return new Placeholder('Canal Barge');
+export function createCanal(nightSky: NightSky): JourneyView {
+  return new CanalView(nightSky);
 }
