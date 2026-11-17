@@ -23,7 +23,7 @@ interface JourneyEntry {
 export const JOURNEY_ENTRIES: Record<JourneyId, JourneyEntry> = {
   wildwood: {
     label: 'Wildwood Road', create: (sky) => new Journey(sky),
-    hint: 'Forest, meadow, lake and autumn woods. Startle the animals with the pointer.',
+    hint: 'Six countries from forest to campfire and old wood. Toss food to the fox and stoke the fire.',
   },
   'night-train': {
     label: 'Night Train', ownSky: true, create: createNightTrain,
@@ -31,7 +31,7 @@ export const JOURNEY_ENTRIES: Record<JourneyId, JourneyEntry> = {
   },
   canal: {
     label: 'Canal Barge', create: createCanal,
-    hint: 'Locks, villages and windmills. Cast a line and feed the ducklings.',
+    hint: 'Locks, villages and a harbour. Cast a line, feed the ducks and ring the bell.',
   },
   'night-bus': {
     label: 'Rainy Night Bus', ownSky: true, create: createNightBus,
@@ -39,7 +39,7 @@ export const JOURNEY_ENTRIES: Record<JourneyId, JourneyEntry> = {
   },
   jungle: {
     label: 'Jungle River', create: createJungle,
-    hint: 'A longboat under the canopy. Call the parrots and wake the temple.',
+    hint: 'A longboat under the canopy. Call the parrots and light the carved stones.',
   },
   sky: {
     label: 'Sky Voyage', create: createSkyVoyage,
