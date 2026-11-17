@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { OutsideView } from '../../view';
-import { LandscapePlaceholder } from '../placeholder';
+import { FishingSpotView } from './view';
 
-export function createFishingSpot(_nightSky: NightSky): OutsideView {
-  return new LandscapePlaceholder('Fishing Spot');
+export function createFishingSpot(nightSky: NightSky): OutsideView {
+  return new FishingSpotView(nightSky);
 }
