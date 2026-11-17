@@ -68,6 +68,11 @@ export class MusicPlayer {
     this.listeners.add(fn);
   }
 
+  /** Gets YouTube's player ready ahead of time, so the first track starts without waiting for it to load. */
+  warm(): void {
+    void this.ensurePlayer();
+  }
+
   async playQueue(tracks: Track[], start = 0): Promise<void> {
     if (!tracks.length) return;
     this.listMode = false;

@@ -66,7 +66,17 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
   function setFocusOpen(open: boolean): void {
     focusFloat.hidden = !open;
     focusButton.setAttribute('aria-pressed', String(open));
+    placeFocus();
   }
+  /** Keeps the card just above its dock button, centred on it. */
+  function placeFocus(): void {
+    if (focusFloat.hidden) return;
+    const button = focusButton.getBoundingClientRect();
+    const width = focusFloat.offsetWidth;
+    focusFloat.style.left = `${Math.max(8, Math.min(button.left + button.width / 2 - width / 2, innerWidth - width - 8))}px`;
+    focusFloat.style.bottom = `${innerHeight - button.top + 8}px`;
+  }
+  addEventListener('resize', placeFocus);
   focusReady = true;
   setFocusOpen(sessionActive);
   /** Zen keeps the timer in the floating card; business keeps it in its own card on the left. */

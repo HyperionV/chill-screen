@@ -119,6 +119,7 @@ export function createMusicPanel(player: MusicPlayer): Panel {
     action: link.button,
     body: h('div', { class: 'music' }, link.status, browse),
     onOpen: () => {
+      player.warm();
       if (!loaded && auth.clientId && auth.wasSignedIn) void signIn(false);
     },
   };

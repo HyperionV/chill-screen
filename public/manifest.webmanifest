@@ -1,0 +1,14 @@
+{
+  "name": "ChillScreen",
+  "short_name": "ChillScreen",
+  "description": "A calm living pixel scene with notes, tasks, reminders and music for your second screen.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#12224a",
+  "theme_color": "#12224a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

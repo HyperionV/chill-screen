@@ -340,23 +340,14 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   color: var(--muted);
 }
 
-/* Zen's timer: a small floating card above the dock, set to the right of the radio so it never covers it. */
+/* Zen's timer: a small floating card above the dock, placed by the script just above its dock button. */
 .focus-float {
   position: fixed;
-  left: calc(50% + 160px);
-  bottom: 84px;
   z-index: 12;
   padding: 12px 16px;
   background: var(--glass-strong);
   box-shadow: var(--frame);
   transition: opacity 0.6s var(--ease);
-}
-
-@media (max-width: 900px) {
-  .focus-float {
-    left: 50%;
-    transform: translateX(-50%);
-  }
 }
 
 .focus-float .icon-btn {
