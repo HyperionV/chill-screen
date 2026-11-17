@@ -11,11 +11,8 @@ import { paintShadowEllipse } from './hardscape';
 import { Scenery } from './scenery';
 import { Sunlight } from './light';
 import { Surface } from './surface';
+import { memoryCanvas, type PixelStage } from './pixel-stage';
 
-/** Highest pixel density we draw at; beyond this the soft art gains nothing and costs power. */
-const MAX_PIXEL_RATIO = 1.5;
-/** The vignette is a smooth gradient, so a small image stretched to full size looks identical. */
-const VIGNETTE_RES = 0.25;
 /** How far the light may drift (sum of colour channel changes) before the still layers are repainted. */
 const REPAINT_COLOR_DRIFT = 8;
 /** Fish further than this above the sand cast no visible shadow. */
@@ -43,11 +40,13 @@ const paletteDrift = (a: Palette, b: Palette): number => {
   return d;
 };
 
+/** Draws the aquarium onto the pixel stage, in world units scaled to the stage's rows. */
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
-  private readonly waterLayer = document.createElement('canvas');
-  private readonly hardscapeLayer = document.createElement('canvas');
-  private readonly vignette = document.createElement('canvas');
+  private readonly canvas: HTMLCanvasElement;
+  private readonly waterLayer = memoryCanvas(1, 1).canvas;
+  private readonly hardscapeLayer = memoryCanvas(1, 1).canvas;
+  private readonly vignette = memoryCanvas(1, 1).canvas;
   private readonly scenery = new Scenery();
   private readonly sunlight = new Sunlight();
   private readonly surface = new Surface();
@@ -57,29 +56,24 @@ export class Renderer {
   scale = 1;
   private painted: Palette | null = null;
 
-  constructor(private readonly canvas: HTMLCanvasElement, tank: Tank) {
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) throw new Error('2D canvas is not available');
-    this.ctx = ctx;
+  constructor(stage: PixelStage, tank: Tank) {
+    this.canvas = stage.canvas;
+    this.ctx = stage.ctx;
     this.effects = createEffects(tank);
   }
 
-  /** Fits the canvas to the window and returns the tank width in world units for this shape. */
-  resize(cssWidth: number, cssHeight: number): number {
-    const ratio = Math.min(window.devicePixelRatio || 1, MAX_PIXEL_RATIO);
-    const w = Math.round(cssWidth * ratio);
-    const h = Math.round(cssHeight * ratio);
-    for (const c of [this.canvas, this.waterLayer, this.hardscapeLayer]) {
+  /** Sizes the still layers to the stage (call after the stage is fitted) and returns the tank width in world units. */
+  resize(): number {
+    const { width: w, height: h } = this.canvas;
+    for (const c of [this.waterLayer, this.hardscapeLayer, this.vignette]) {
       c.width = w;
       c.height = h;
     }
-    this.vignette.width = Math.ceil(w * VIGNETTE_RES);
-    this.vignette.height = Math.ceil(h * VIGNETTE_RES);
     paintVignette(this.vignette);
     this.scale = h / TANK_HEIGHT;
     this.surface.resize(w, this.scale);
     this.painted = null;
-    return (cssWidth / cssHeight) * TANK_HEIGHT;
+    return (w / h) * TANK_HEIGHT;
   }
 
   /** Forces the still layers to repaint on the next frame (after the tank changes shape). */
@@ -100,6 +94,7 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.waterLayer, 0, 0);
     ctx.setTransform(S, 0, 0, S, 0, 0);
     this.scenery.drawPlanting(ctx, tank, time, dt, S);

@@ -3,6 +3,7 @@ import { floorAt, SURFACE_Y } from '../world/geometry';
 import type { Tank } from '../world/types';
 import { css, haze, hsl, mix, type RGB } from './color';
 import { driftwood, mossAnchors } from './hardscape';
+import { memoryCanvas } from './pixel-stage';
 import { surfaceAt } from './surface';
 
 /**
@@ -19,8 +20,6 @@ interface Layer {
   /** World units between plants along the tank. */
   spacing: number;
   height: [number, number];
-  /** Resolution of the painted image relative to the screen; blurred layers need less. */
-  res: number;
   /** Blur in world units: the far wall is out of focus, which is what sells depth. */
   blur: number;
   /** How much the plant takes on the water colour. */
@@ -34,9 +33,9 @@ interface Layer {
 }
 
 const LAYERS: Layer[] = [
-  { z: [0, 0.02], spacing: 26, height: [300, 560], res: 0.5, blur: 2.6, haze: 0.5, variants: 10, kinds: ['stems', 'stems', 'grass', 'bush'], sway: 0.03, reacts: false },
-  { z: [0.02, 0.07], spacing: 48, height: [180, 400], res: 0.7, blur: 0.9, haze: 0.28, variants: 9, kinds: ['stems', 'grass', 'bush', 'bush'], sway: 0.045, reacts: true },
-  { z: [0.08, 0.26], spacing: 34, height: [20, 38], res: 1, blur: 0, haze: 0.12, variants: 5, kinds: ['carpet'], sway: 0.14, reacts: true },
+  { z: [0, 0.02], spacing: 26, height: [300, 560], blur: 2.6, haze: 0.5, variants: 10, kinds: ['stems', 'stems', 'grass', 'bush'], sway: 0.03, reacts: false },
+  { z: [0.02, 0.07], spacing: 48, height: [180, 400], blur: 0.9, haze: 0.28, variants: 9, kinds: ['stems', 'grass', 'bush', 'bush'], sway: 0.045, reacts: true },
+  { z: [0.08, 0.26], spacing: 34, height: [20, 38], blur: 0, haze: 0.12, variants: 5, kinds: ['carpet'], sway: 0.14, reacts: true },
 ];
 
 interface Sprite {
@@ -215,12 +214,8 @@ function paintSprite(layer: Layer, kind: Kind, rnd: () => number, water: RGB, sc
   const h = kind === 'bush' ? (layer.height[0] + rnd() * (layer.height[1] - layer.height[0])) * 0.4 : layer.height[0] + rnd() * (layer.height[1] - layer.height[0]);
   const w = kind === 'bush' ? h * 1.5 : kind === 'carpet' ? 110 : kind === 'grass' ? h * 0.42 : h * 0.5;
   const margin = layer.blur * 3 + 6;
-  const k = scale * layer.res;
-  const canvas = document.createElement('canvas');
-  canvas.width = Math.max(1, Math.ceil((w + margin * 2) * k));
-  canvas.height = Math.max(1, Math.ceil((h + margin) * k));
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('2D canvas is not available');
+  const k = scale;
+  const { canvas, ctx } = memoryCanvas(Math.max(1, Math.ceil((w + margin * 2) * k)), Math.max(1, Math.ceil((h + margin) * k)));
   ctx.setTransform(k, 0, 0, k, (margin + w / 2) * k, h * k);
   if (layer.blur > 0) ctx.filter = `blur(${(layer.blur * k).toFixed(2)}px)`;
   const tone = (c: RGB): RGB => haze(c, water, 1 - layer.haze * 2);

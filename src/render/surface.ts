@@ -2,6 +2,7 @@ import { SURFACE_Y } from '../world/geometry';
 import type { Palette } from '../world/daylight';
 import type { Tank } from '../world/types';
 import { css, mix } from './color';
+import { memoryCanvas } from './pixel-stage';
 
 const SLICES = 12;
 
@@ -14,20 +15,21 @@ export const surfaceAt = (x: number, time: number): number =>
  * reflection), so the band above the water line is the scene below it, flipped and rippling.
  */
 export class Surface {
-  private readonly mirror = document.createElement('canvas');
+  private readonly mirror = memoryCanvas(1, 1);
   private scale = 1;
 
   resize(canvasWidth: number, scale: number): void {
     this.scale = scale;
-    this.mirror.width = canvasWidth;
-    this.mirror.height = Math.ceil(SURFACE_Y * scale);
+    this.mirror.canvas.width = canvasWidth;
+    this.mirror.canvas.height = Math.ceil(SURFACE_Y * scale);
   }
 
   /** Call after everything under the water line is drawn, with the world transform set. */
   draw(ctx: CanvasRenderingContext2D, source: HTMLCanvasElement, tank: Tank, pal: Palette, time: number): void {
-    const band = this.mirror.height;
-    const m = this.mirror.getContext('2d');
-    if (!m) return;
+    const mirror = this.mirror.canvas;
+    const band = mirror.height;
+    const m = this.mirror.ctx;
+    m.imageSmoothingEnabled = false;
     m.setTransform(1, 0, 0, -1, 0, band);
     m.drawImage(source, 0, band, source.width, band, 0, 0, source.width, band);
 
@@ -36,7 +38,7 @@ export class Surface {
     const sliceH = band / SLICES;
     for (let i = 0; i < SLICES; i++) {
       const wobble = Math.sin(time * 1.2 + i * 0.9) * 3 * this.scale * (0.4 + i / SLICES);
-      ctx.drawImage(this.mirror, 0, i * sliceH, source.width, sliceH + 1, wobble, i * sliceH, source.width, sliceH + 1);
+      ctx.drawImage(mirror, 0, i * sliceH, source.width, sliceH + 1, wobble, i * sliceH, source.width, sliceH + 1);
     }
     ctx.restore();
 

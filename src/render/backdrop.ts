@@ -132,7 +132,7 @@ function paintSand(ctx: CanvasRenderingContext2D, W: number, pal: Palette, rnd: 
   }
 }
 
-/** Darkened edges, painted once at low resolution (a smooth gradient loses nothing when stretched). */
+/** Darkened edges, painted once. */
 export function paintVignette(canvas: HTMLCanvasElement): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('2D canvas is not available');

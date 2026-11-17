@@ -1,5 +1,5 @@
 import { mix, type RGB } from '../render/color';
-import { memoryCanvas } from './pixel-stage';
+import { memoryCanvas } from '../render/pixel-stage';
 
 const FONT = '"Outfit Variable", "Segoe UI Variable", sans-serif';
 const WHITE: RGB = [255, 255, 255];

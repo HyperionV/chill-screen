@@ -3,6 +3,7 @@ import { createTank, resizeTank, stepTank } from '../world/tank';
 import { catchUp, loadTank, saveTank } from '../world/save';
 import { SPECIES } from '../world/species';
 import type { Fish, Tank } from '../world/types';
+import { PixelStage } from '../render/pixel-stage';
 import { Renderer } from '../render/renderer';
 import { sandPuff } from '../render/effects';
 import { TankPointer } from './pointer';
@@ -10,6 +11,8 @@ import { hourNow } from './clock';
 
 /** The tank runs at most this many frames a second: smooth for slow water, light on the machine. */
 const FPS_CAP = 30;
+/** Highest screen pixel density used; the stage is pixel-game size either way, this only sets the blow-up. */
+const MAX_DPR = 1.5;
 const SAVE_EVERY = 30;
 /** Longest step simulated in one go; longer gaps (a sleeping laptop) are caught up separately. */
 const MAX_STEP = 0.1;
@@ -28,6 +31,7 @@ export interface TankSceneHooks {
 /** Owns the living tank: loading it, running it, drawing it and saving it. */
 export class TankScene {
   private tank: Tank;
+  private readonly stage: PixelStage;
   private readonly renderer: Renderer;
   private readonly pointer: TankPointer;
   private lastFrame = 0;
@@ -48,7 +52,8 @@ export class TankScene {
     } else {
       this.tank = createTank(width);
     }
-    this.renderer = new Renderer(canvas, this.tank);
+    this.stage = new PixelStage(canvas);
+    this.renderer = new Renderer(this.stage, this.tank);
     this.pointer = new TankPointer(canvas, () => this.tank, {
       onHover: hooks.onHover,
       onPlanted: (x, y) => sandPuff(this.renderer.effects, x, y, paletteAt(hourNow()).sand),
@@ -108,11 +113,8 @@ export class TankScene {
 
   private fit(): void {
     // A window still being laid out (or minimised) reports zero size; keep the last good shape.
-    if (innerWidth === 0 || innerHeight === 0) return;
-    const width = this.renderer.resize(innerWidth, innerHeight);
-    resizeTank(this.tank, width);
-    this.canvas.style.width = `${innerWidth}px`;
-    this.canvas.style.height = `${innerHeight}px`;
+    if (!this.stage.fit(Math.min(devicePixelRatio || 1, MAX_DPR))) return;
+    resizeTank(this.tank, this.renderer.resize());
   }
 
   private onVisibility(): void {
@@ -139,6 +141,7 @@ export class TankScene {
     this.pointer.tick(dt);
     stepTank(this.tank, dt, pal.light);
     this.renderer.render(this.tank, pal, dt, now / 1000);
+    this.stage.present();
     this.frameCost = this.frameCost * 0.95 + (performance.now() - started) * 0.05;
 
     this.sinceSave += dt;

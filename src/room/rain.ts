@@ -1,6 +1,6 @@
 import { css, mix } from '../render/color';
 import type { Look } from '../wallpapers/look';
-import { memoryCanvas } from './pixel-stage';
+import { memoryCanvas } from '../render/pixel-stage';
 
 interface Streak {
   x: number;
@@ -47,7 +47,7 @@ const sizeOf = (mass: number): number => (mass < 0.6 ? 0 : mass < 1.6 ? 1 : mass
  * Rain on the window, in pixels. Outside: thin streaks falling past and a grey veil over the view. On the glass:
  * a mist that softens what is behind it, drops that catch the light, and heavy drops that slide down in fits and
  * starts, swallowing smaller ones and leaving clear trails. The pointer wipes the glass; the mist creeps back.
- * `level` 0..1 runs from no rain through a drizzle to a downpour. Glass positions are before the frame's shift.
+ * `level` 0..1 runs from no rain through a drizzle to a downpour.
  */
 export class Rain {
   private w = 0;
@@ -122,18 +122,18 @@ export class Rain {
   }
 
   /** Mist and drops on the glass, drawn over what is behind it. The caller clips to the panes. */
-  drawGlass(ctx: CanvasRenderingContext2D, dt: number, level: number, look: Look, ox: number, oy: number): void {
+  drawGlass(ctx: CanvasRenderingContext2D, dt: number, level: number, look: Look): void {
     this.step(dt, level);
     if (level < 0.01 && !this.drops.length) return;
-    this.drawMist(ctx, level, look, ox, oy);
+    this.drawMist(ctx, level, look);
     const sprites = this.spritesFor(look);
     for (const d of this.drops) {
       const s = sprites[sizeOf(d.mass)];
-      ctx.drawImage(s, Math.round(d.x - s.width / 2 + ox), Math.round(d.y - s.height / 2 + oy));
+      ctx.drawImage(s, Math.round(d.x - s.width / 2), Math.round(d.y - s.height / 2));
     }
   }
 
-  private drawMist(ctx: CanvasRenderingContext2D, level: number, look: Look, ox: number, oy: number): void {
+  private drawMist(ctx: CanvasRenderingContext2D, level: number, look: Look): void {
     const t = this.tintedCtx;
     t.globalCompositeOperation = 'copy';
     t.drawImage(this.mist, 0, 0);
@@ -143,7 +143,7 @@ export class Rain {
     ctx.save();
     ctx.globalAlpha = (0.38 + 0.42 * level) * Math.min(1, level * 4);
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(this.tinted, ox, oy, this.tinted.width * MIST_SCALE, this.tinted.height * MIST_SCALE);
+    ctx.drawImage(this.tinted, 0, 0, this.tinted.width * MIST_SCALE, this.tinted.height * MIST_SCALE);
     ctx.restore();
   }
 

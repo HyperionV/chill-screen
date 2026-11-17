@@ -1,33 +1,10 @@
-import { css, mix, type RGB } from '../render/color';
+import { css, mix, shade, type RGB } from '../render/color';
 import { hourNow } from '../scene/clock';
 import { seededRandom } from '../world/math';
 import type { Look } from '../wallpapers/look';
 import type { NightSky } from './night-sky';
-import { memoryCanvas } from './pixel-stage';
+import { SkyDome, clamp01, smooth, type Body, type SkyKey } from './sky';
 import type { OutsideView, ViewFrame } from './view';
-
-/** Colours of sky, sea and light through the day; the hour between two entries blends them. */
-interface SkyKey {
-  zenith: RGB;
-  horizon: RGB;
-  sea: RGB;
-  light: RGB;
-}
-
-const NIGHT: SkyKey = { zenith: [6, 9, 26], horizon: [26, 34, 66], sea: [8, 14, 34], light: [170, 186, 230] };
-const KEYS: (SkyKey & { hour: number })[] = [
-  { hour: 0, ...NIGHT },
-  { hour: 4.8, ...NIGHT },
-  { hour: 6, zenith: [44, 60, 110], horizon: [240, 150, 112], sea: [44, 54, 88], light: [255, 172, 120] },
-  { hour: 7.5, zenith: [72, 132, 204], horizon: [248, 214, 178], sea: [44, 102, 140], light: [255, 228, 190] },
-  { hour: 10, zenith: [40, 110, 196], horizon: [168, 212, 240], sea: [22, 96, 142], light: [255, 250, 236] },
-  { hour: 15.5, zenith: [44, 108, 190], horizon: [180, 214, 238], sea: [24, 94, 138], light: [255, 246, 226] },
-  { hour: 17.3, zenith: [62, 96, 172], horizon: [248, 196, 140], sea: [42, 82, 118], light: [255, 202, 140] },
-  { hour: 18.4, zenith: [54, 52, 112], horizon: [255, 128, 82], sea: [60, 50, 84], light: [255, 140, 80] },
-  { hour: 19.4, zenith: [18, 20, 54], horizon: [98, 62, 98], sea: [20, 20, 46], light: [210, 160, 180] },
-  { hour: 20.5, ...NIGHT },
-  { hour: 24, ...NIGHT },
-];
 
 const WHITE: RGB = [255, 255, 255];
 const SAND: RGB = [222, 196, 152];
@@ -38,7 +15,6 @@ const SHORE = 0.69;
 /** The view is designed for about 270 rows; lengths scale with the real row count. */
 const DESIGN_ROWS = 270;
 const GLINTS = 120;
-const CLOUDS = 6;
 const SURF_PERIOD = 9.5;
 const GULLS = 3;
 /** Gull wing poses, as pixels around the body: wings up, level, down. */
@@ -48,54 +24,11 @@ const GULL_POSES: [number, number][][] = [
   [[-3, 1], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 1]],
 ];
 
-const smooth = (t: number): number => t * t * (3 - 2 * t);
-const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
-const scale = (c: RGB, k: number): RGB => [Math.min(255, c[0] * k), Math.min(255, c[1] * k), Math.min(255, c[2] * k)];
 const luma = (c: RGB): number => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
 const hash = (n: number): number => {
   const s = Math.sin(n * 12.9898) * 43758.5453;
   return s - Math.floor(s);
 };
-
-function skyAt(hour: number): SkyKey {
-  const h = ((hour % 24) + 24) % 24;
-  let i = 0;
-  while (KEYS[i + 1].hour < h) i++;
-  const a = KEYS[i];
-  const b = KEYS[i + 1];
-  const t = smooth((h - a.hour) / (b.hour - a.hour));
-  return { zenith: mix(a.zenith, b.zenith, t), horizon: mix(a.horizon, b.horizon, t), sea: mix(a.sea, b.sea, t), light: mix(a.light, b.light, t) };
-}
-
-interface Body {
-  u: number;
-  v: number;
-  /** Above 0 when the body is over the horizon, 1 at its highest. */
-  up: number;
-}
-
-/** Where the sun or moon is: it rises at `rise` o'clock and sets `length` hours later. */
-function arc(hour: number, rise: number, length: number): Body {
-  const t = ((((hour - rise) % 24) + 24) % 24) / length;
-  const up = t <= 1 ? Math.sin(Math.PI * t) : -0.3;
-  return { u: 0.12 + 0.76 * Math.min(1, t), v: HORIZON - up * 0.4, up };
-}
-
-/** A filled pixel disc. */
-function disc(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number): void {
-  for (let dy = -r; dy <= r; dy++) {
-    const half = Math.round(Math.sqrt(r * r - dy * dy));
-    ctx.fillRect(cx - half, cy + dy, half * 2 + 1, 1);
-  }
-}
-
-interface Cloud {
-  sprite: number;
-  x: number;
-  v: number;
-  size: number;
-  speed: number;
-}
 
 interface Gull {
   x: number;
@@ -107,7 +40,7 @@ interface Gull {
 
 /**
  * The sea seen from the room, as a pixel scene: sky and clouds by the hour, a sun or moon with its path of
- * glints on the water, waves rolling up the beach, gulls by day and a lighthouse on the point at night.
+ * * glints on the water, waves rolling up the beach, gulls by day and a lighthouse on the point at night.
  */
 export class Sea implements OutsideView {
   private w = 0;
@@ -115,19 +48,14 @@ export class Sea implements OutsideView {
   private unit = 1;
   /** Kept as one object so the star field built for it is reused frame to frame. */
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [128, 128, 128] };
-  private readonly clouds: Cloud[] = [];
-  private cloudSprites: HTMLCanvasElement[] = [];
-  private cloudKey = '';
+  private readonly dome: SkyDome;
   private readonly gulls: Gull[] = [];
   private headland: [number, number][] = [];
 
-  constructor(private readonly nightSky: NightSky) {
-    for (let y = 0; y < 18; y++) for (let x = 0; x < 64; x++) this.look.sky.push({ u: (x + 0.5) / 64, v: ((y + 0.5) / 18) * (HORIZON - 0.05) });
+  constructor(nightSky: NightSky) {
+    this.dome = new SkyDome(nightSky, HORIZON);
+    this.dome.fillSkyCells(this.look);
     const rnd = seededRandom(7);
-    for (let i = 0; i < CLOUDS; i++) {
-      const v = 0.06 + rnd() * 0.3;
-      this.clouds.push({ sprite: i % 4, x: rnd(), v, size: 1.25 - v * 1.4 + rnd() * 0.2, speed: 0.004 + rnd() * 0.006 });
-    }
     for (let i = 0; i < GULLS; i++) this.gulls.push({ x: -1, y: 0, vx: 0, flap: rnd() * 6, wait: 3 + rnd() * 15 });
   }
 
@@ -135,7 +63,7 @@ export class Sea implements OutsideView {
     this.w = w;
     this.h = h;
     this.unit = h / DESIGN_ROWS;
-    this.cloudKey = '';
+    this.dome.resize(w, h);
     const rnd = seededRandom(31);
     this.headland = [];
     for (let i = 0; i <= 20; i++) {
@@ -146,122 +74,29 @@ export class Sea implements OutsideView {
   }
 
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look {
-    const hour = hourNow();
-    const sky = skyAt(hour);
-    const sun = arc(hour, 6, 12.6);
-    const moon = arc(hour, 18.8, 11);
-    const day = clamp01((sun.up + 0.08) / 0.3);
+    const state = this.dome.stateAt(hourNow());
+    const { sky, sun, moon, day } = state;
     this.updateLook(sky, sun, day);
-
-    const [sx, sy] = frame.shift;
-    ctx.save();
-    ctx.translate(sx, sy);
-    this.drawSky(ctx, sky, sun, day);
-    this.nightSky.draw(ctx, this.look, (u, v) => [u * this.w, v * this.h], 1, frame.time);
-    this.nightSky.drawMeteors(ctx, frame.dt, this.look.night, this.w, this.h * HORIZON);
-    this.drawBodies(ctx, sky, sun, moon);
-    this.drawClouds(ctx, frame.dt, sky, day);
+    this.dome.draw(ctx, state, frame, this.look);
     this.drawHeadland(ctx, sky, day, frame.time);
     this.drawWater(ctx, sky, day, frame.time);
     this.drawGlitter(ctx, sky, sun, moon, day, frame.time);
     this.drawBeach(ctx, sky, day, frame.time);
     this.drawGulls(ctx, frame.dt, day, frame.time);
-    ctx.restore();
     return this.look;
   }
 
   private updateLook(sky: SkyKey, sun: Body, day: number): void {
     const air = mix(sky.zenith, sky.horizon, 0.55);
-    this.look.mean = luma(air) * 0.6 + luma(sky.sea) * 0.4;
+    this.look.mean = luma(air) * 0.6 + luma(sky.water) * 0.4;
     this.look.night = 1 - day;
-    this.look.tint = mix(air, sky.sea, 0.3);
+    this.look.tint = mix(air, sky.water, 0.3);
     this.look.sun = sun.up > -0.02 ? { u: sun.u, v: sun.v, strength: 0.75, color: sky.light } : null;
-  }
-
-  /** How far past the edges the view is drawn, so the pointer's shift never shows a gap. */
-  private get pad(): number {
-    return Math.ceil(this.w * 0.05);
-  }
-
-  private drawSky(ctx: CanvasRenderingContext2D, sky: SkyKey, sun: Body, day: number): void {
-    const pad = this.pad;
-    const hy = Math.round(this.h * HORIZON);
-    const g = ctx.createLinearGradient(0, 0, 0, hy);
-    g.addColorStop(0, css(sky.zenith));
-    g.addColorStop(0.6, css(mix(sky.zenith, sky.horizon, 0.5)));
-    g.addColorStop(1, css(sky.horizon));
-    ctx.fillStyle = g;
-    ctx.fillRect(-pad, -pad, this.w + pad * 2, hy + pad);
-    if (sun.up < -0.15) return;
-    // A low sun warms the sky around it.
-    const low = 1 - clamp01(sun.up / 0.5);
-    const x = sun.u * this.w;
-    const glow = ctx.createRadialGradient(x, hy, 0, x, hy, this.w * 0.55);
-    glow.addColorStop(0, css(sky.light, 0.5 * low * (0.3 + day * 0.7)));
-    glow.addColorStop(1, css(sky.light, 0));
-    ctx.fillStyle = glow;
-    ctx.fillRect(-pad, -pad, this.w + pad * 2, hy + pad);
-  }
-
-  private drawBodies(ctx: CanvasRenderingContext2D, sky: SkyKey, sun: Body, moon: Body): void {
-    const hy = Math.round(this.h * HORIZON);
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(-this.w, -this.h, this.w * 3, hy + this.h);
-    ctx.clip();
-    if (sun.up > -0.08) {
-      const x = Math.round(sun.u * this.w);
-      const y = Math.round(sun.v * this.h);
-      const r = Math.round(8 * this.unit);
-      const halo = ctx.createRadialGradient(x, y, r, x, y, r * 5);
-      halo.addColorStop(0, css(sky.light, 0.55));
-      halo.addColorStop(1, css(sky.light, 0));
-      ctx.fillStyle = halo;
-      ctx.fillRect(x - r * 5, y - r * 5, r * 10, r * 10);
-      ctx.fillStyle = css(mix(sky.light, WHITE, 0.55));
-      disc(ctx, x, y, r);
-      ctx.fillStyle = css(mix(sky.light, WHITE, 0.9));
-      disc(ctx, x - 1, y - 1, r - 2);
-    }
-    if (moon.up > -0.05) {
-      const x = Math.round(moon.u * this.w);
-      const y = Math.round(moon.v * this.h);
-      const r = Math.round(6 * this.unit);
-      const halo = ctx.createRadialGradient(x, y, r, x, y, r * 6);
-      halo.addColorStop(0, 'rgba(200,214,255,0.22)');
-      halo.addColorStop(1, 'rgba(200,214,255,0)');
-      ctx.fillStyle = halo;
-      ctx.fillRect(x - r * 6, y - r * 6, r * 12, r * 12);
-      ctx.fillStyle = '#e9ebe4';
-      disc(ctx, x, y, r);
-      ctx.fillStyle = '#c4c8cc';
-      for (const [dx, dy, s] of [[-2, -1, 2], [2, 1, 1], [-1, 3, 1], [1, -3, 1]]) ctx.fillRect(x + dx, y + dy, s, s);
-    }
-    ctx.restore();
-  }
-
-  private drawClouds(ctx: CanvasRenderingContext2D, dt: number, sky: SkyKey, day: number): void {
-    const lit = mix(mix(sky.light, WHITE, 0.5 * day), [44, 50, 80], (1 - day) * 0.85);
-    const shade = scale(mix(sky.zenith, sky.horizon, 0.55), 0.82 + 0.1 * day);
-    const key = [...lit, ...shade].map((v) => Math.round(v / 12)).join(',');
-    if (key !== this.cloudKey) {
-      this.cloudKey = key;
-      this.cloudSprites = [0, 1, 2, 3].map((seed) => cloudSprite(seed, lit, shade, this.unit));
-    }
-    for (const c of this.clouds) {
-      c.x += c.speed * dt * 0.1;
-      const sprite = this.cloudSprites[c.sprite];
-      const cw = Math.round(sprite.width * c.size);
-      const ch = Math.round(sprite.height * c.size);
-      const span = this.w + cw * 2;
-      const x = Math.round(((c.x * span) % span) - cw);
-      ctx.drawImage(sprite, x, Math.round(c.v * this.h - ch / 2), cw, ch);
-    }
   }
 
   private drawHeadland(ctx: CanvasRenderingContext2D, sky: SkyKey, day: number, time: number): void {
     const hy = Math.round(this.h * HORIZON);
-    ctx.fillStyle = css(scale(mix(sky.horizon, sky.zenith, 0.5), 0.62));
+    ctx.fillStyle = css(shade(mix(sky.horizon, sky.zenith, 0.5), 0.62));
     ctx.beginPath();
     ctx.moveTo(this.headland[0][0] * this.w, hy);
     for (const [u, rise] of this.headland) ctx.lineTo(u * this.w, hy - rise * this.h);
@@ -273,9 +108,9 @@ export class Sea implements OutsideView {
     const x = Math.round(this.w * 0.255);
     const tall = Math.round(7 * this.unit);
     const top = Math.round(hy - this.h * 0.03 - tall);
-    ctx.fillStyle = css(scale(mix(WHITE, sky.horizon, 0.3), 0.55 + 0.45 * day));
+    ctx.fillStyle = css(shade(mix(WHITE, sky.horizon, 0.3), 0.55 + 0.45 * day));
     ctx.fillRect(x, top, 2, tall);
-    ctx.fillStyle = css(scale([190, 64, 56], 0.5 + 0.5 * day));
+    ctx.fillStyle = css(shade([190, 64, 56], 0.5 + 0.5 * day));
     ctx.fillRect(x, top + 2, 2, 1);
     ctx.fillRect(x, top + 5, 2, 1);
     if (day > 0.7) return;
@@ -293,20 +128,19 @@ export class Sea implements OutsideView {
 
   /** The open water: a gradient to the shore, with short dashes of light and shadow that come and go like waves. */
   private drawWater(ctx: CanvasRenderingContext2D, sky: SkyKey, day: number, time: number): void {
-    const pad = this.pad;
     const hy = Math.round(this.h * HORIZON);
     const shore = Math.round(this.h * SHORE);
     const g = ctx.createLinearGradient(0, hy, 0, shore);
-    g.addColorStop(0, css(mix(sky.horizon, sky.sea, 0.5)));
-    g.addColorStop(0.25, css(sky.sea));
-    g.addColorStop(1, css(scale(sky.sea, 0.8)));
+    g.addColorStop(0, css(mix(sky.horizon, sky.water, 0.5)));
+    g.addColorStop(0.25, css(sky.water));
+    g.addColorStop(1, css(shade(sky.water, 0.8)));
     ctx.fillStyle = g;
-    ctx.fillRect(-pad, hy, this.w + pad * 2, this.h - hy + pad);
+    ctx.fillRect(0, hy, this.w, this.h - hy);
 
     // Crests catch daylight; at night they only just lift off the dark water.
-    const crest = css(mix(mix(sky.zenith, sky.sea, 0.4), WHITE, 0.08 + 0.22 * day), 0.45 + 0.3 * day);
-    const trough = css(scale(sky.sea, 0.8), 0.7);
-    const span = this.w + pad * 2;
+    const crest = css(mix(mix(sky.zenith, sky.water, 0.4), WHITE, 0.08 + 0.22 * day), 0.45 + 0.3 * day);
+    const trough = css(shade(sky.water, 0.8), 0.7);
+    const span = this.w;
     for (let y = hy + 1; y < shore; y++) {
       const f = (y - hy) / (shore - hy);
       const spacing = 7 + 34 * f * f;
@@ -316,7 +150,7 @@ export class Sea implements OutsideView {
       for (let j = 0; j < count; j++) {
         const seed = y * 131 + j;
         if (Math.sin(time * (0.7 + hash(seed) * 0.9) + hash(seed + 0.3) * 6.28) < 0.15) continue;
-        const x = (((((j + hash(seed + 0.7)) * spacing + time * drift) % span) + span) % span) - pad;
+        const x = (((((j + hash(seed + 0.7)) * spacing + time * drift) % span) + span) % span);
         ctx.fillStyle = hash(seed + 0.9) < 0.35 ? trough : crest;
         ctx.fillRect(Math.round(x), y, length, 1);
       }
@@ -355,28 +189,27 @@ export class Sea implements OutsideView {
 
   /** The beach: dry sand, a band of wet sand, and the wash running up and back with a lace of foam. */
   private drawBeach(ctx: CanvasRenderingContext2D, sky: SkyKey, day: number, time: number): void {
-    const pad = this.pad;
     const shore = Math.round(this.h * SHORE);
     const reach = this.h * 0.045;
     const surge = smooth(0.5 - 0.5 * Math.cos((time / SURF_PERIOD) * Math.PI * 2));
-    const sand = scale(mix(SAND, sky.light, 0.25), 0.2 + 0.8 * day);
+    const sand = shade(mix(SAND, sky.light, 0.25), 0.2 + 0.8 * day);
     const u = this.unit;
     const edge = (x: number): number =>
       Math.round(shore + reach * surge + 2.5 * u * Math.sin(x / (40 * u) + time * 0.2) + 1.5 * u * Math.sin(x / (13 * u) - 1.3));
 
     const g = ctx.createLinearGradient(0, shore, 0, this.h);
-    g.addColorStop(0, css(scale(sand, 0.6)));
+    g.addColorStop(0, css(shade(sand, 0.6)));
     g.addColorStop(0.4, css(sand));
-    g.addColorStop(1, css(scale(sand, 0.9)));
+    g.addColorStop(1, css(shade(sand, 0.9)));
     ctx.fillStyle = g;
-    ctx.fillRect(-pad, shore, this.w + pad * 2, this.h - shore + pad);
+    ctx.fillRect(0, shore, this.w, this.h - shore);
 
-    const wet = css(mix(scale(sand, 0.62), sky.horizon, 0.2));
-    const wash = css(mix(scale(sky.sea, 0.9), mix(sky.sea, SHALLOWS, 0.45 * day), 0.6));
+    const wet = css(mix(shade(sand, 0.62), sky.horizon, 0.2));
+    const wash = css(mix(shade(sky.water, 0.9), mix(sky.water, SHALLOWS, 0.45 * day), 0.6));
     const foam = mix(sky.light, WHITE, 0.75);
     const foamAlpha = 0.35 + 0.65 * day;
     const wetDepth = Math.round(reach * (1.1 - surge) + 2);
-    for (let x = -pad; x < this.w + pad; x += 2) {
+    for (let x = 0; x < this.w; x += 2) {
       const e = edge(x);
       // Wet sand left by the last wave, darker and catching the sky.
       ctx.fillStyle = wet;
@@ -394,7 +227,7 @@ export class Sea implements OutsideView {
       const t = (time / SURF_PERIOD + offset) % 1;
       const y0 = hy + (shore - hy) * (0.5 + 0.5 * t ** 1.3);
       ctx.fillStyle = css(foam, foamAlpha * 0.7 * Math.sin(Math.PI * t));
-      for (let x = -pad; x < this.w + pad; x += 3) {
+      for (let x = 0; x < this.w; x += 3) {
         if (hash(Math.floor(x / 9) + offset * 17) < 0.3) continue;
         ctx.fillRect(x, Math.round(y0 + 1.5 * u * Math.sin(x / (30 * u) + offset * 9)), 3, Math.max(1, Math.round(t * 2)));
       }
@@ -422,24 +255,4 @@ export class Sea implements OutsideView {
       for (const [dx, dy] of GULL_POSES[pose]) ctx.fillRect(x + dx, y + dy, 1, 1);
     }
   }
-}
-
-/** A small pixel cloud: a lit top and a flat shaded base, with hard edges. Made once per sky colour. */
-function cloudSprite(seed: number, lit: RGB, shade: RGB, unit: number): HTMLCanvasElement {
-  const { canvas: c, ctx } = memoryCanvas(Math.round(70 * unit), Math.round(22 * unit));
-  const rnd = seededRandom(seed * 131 + 17);
-  ctx.fillStyle = css(lit);
-  for (let i = 0; i < 9; i++) {
-    const t = 0.1 + 0.8 * rnd();
-    const hump = Math.sin(Math.PI * t);
-    const r = Math.round(c.height * (0.18 + 0.24 * hump * (0.6 + 0.4 * rnd())));
-    disc(ctx, Math.round(c.width * t), Math.round(c.height - r - 1), r);
-  }
-  ctx.fillRect(Math.round(c.width * 0.08), c.height - 3, Math.round(c.width * 0.84), 3);
-  ctx.globalCompositeOperation = 'source-atop';
-  ctx.fillStyle = css(shade);
-  ctx.fillRect(0, Math.round(c.height * 0.68), c.width, c.height);
-  ctx.fillStyle = css(mix(lit, shade, 0.5));
-  ctx.fillRect(0, Math.round(c.height * 0.68) - 1, c.width, 1);
-  return c;
 }

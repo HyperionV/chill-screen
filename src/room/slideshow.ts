@@ -2,7 +2,7 @@ import { hourNow } from '../scene/clock';
 import { readLook, type Look } from '../wallpapers/look';
 import type { Wallpaper } from '../wallpapers/store';
 import type { NightSky } from './night-sky';
-import { memoryCanvas } from './pixel-stage';
+import { memoryCanvas } from '../render/pixel-stage';
 import type { OutsideView, ViewFrame } from './view';
 
 interface Slide {
@@ -13,8 +13,6 @@ interface Slide {
 }
 
 const FADE_SECONDS = 3.5;
-/** The picture is drawn this much past each edge so the pointer's shift never shows a gap. */
-const EDGE = 0.05;
 /** How many recent wallpapers are kept out of the next pick. */
 const RECENT = 3;
 const RETRY_SECONDS = 30;
@@ -87,11 +85,11 @@ export class Slideshow implements OutsideView {
     if (fadeIn >= 1 && this.slides.length > 1) this.slides = [top];
     for (const s of this.slides) {
       const shown = s === top ? ease(fadeIn) : 1;
-      const scale = Math.max((this.w * (1 + EDGE * 2)) / s.image.width, (this.h * (1 + EDGE * 2)) / s.image.height);
+      const scale = Math.max(this.w / s.image.width, this.h / s.image.height);
       const iw = s.image.width * scale;
       const ih = s.image.height * scale;
-      const x = Math.round((this.w - iw) / 2 + frame.shift[0]);
-      const y = Math.round((this.h - ih) / 2 + frame.shift[1]);
+      const x = Math.round((this.w - iw) / 2);
+      const y = Math.round((this.h - ih) / 2);
       ctx.globalAlpha = shown;
       ctx.drawImage(s.image, x, y, iw, ih);
       ctx.globalAlpha = 1;
@@ -115,7 +113,7 @@ export class Slideshow implements OutsideView {
    */
   private async decode(blob: Blob): Promise<HTMLCanvasElement> {
     const full = await createImageBitmap(blob);
-    const need = Math.min(1, Math.max((this.w * (1 + EDGE * 2)) / full.width, (this.h * (1 + EDGE * 2)) / full.height));
+    const need = Math.min(1, Math.max(this.w / full.width, this.h / full.height));
     const small = await createImageBitmap(full, {
       resizeWidth: Math.ceil(full.width * need), resizeHeight: Math.ceil(full.height * need), resizeQuality: 'high',
     });

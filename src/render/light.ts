@@ -3,15 +3,19 @@ import { floorAt, SAND_BACK_Y, SURFACE_Y, TANK_HEIGHT } from '../world/geometry'
 import type { Palette } from '../world/daylight';
 import type { Tank } from '../world/types';
 import { css } from './color';
+import { memoryCanvas } from './pixel-stage';
 
 /** Caustic tile size in pixels, frames in one loop, and how long a loop lasts. */
 const TILE = 160;
 const FRAMES = 24;
 const LOOP_SECONDS = 8;
 const CELLS = 9;
-/** Caustics and shafts are soft, so they are drawn at a fraction of screen resolution and stretched. */
-const CAUSTIC_RES = 0.5;
-const RAY_RES = 0.25;
+/**
+ * Shares of the pixel stage's resolution the caustics and shafts are drawn at. The caustic net is drawn at full
+ * stage size so its lines stay a pixel wide; the soft shafts can be stretched from half size.
+ */
+const CAUSTIC_RES = 1;
+const RAY_RES = 0.5;
 const CAUSTIC_TOP = SAND_BACK_Y - 30;
 const SHAFTS = 7;
 /** Sunlight slants: how far right a shaft travels from the surface to the sand. */
@@ -65,35 +69,25 @@ function causticFrames(): HTMLCanvasElement[] {
         img.data[k + 3] = Math.round(v * 255);
       }
     }
-    const c = document.createElement('canvas');
-    c.width = TILE;
-    c.height = TILE;
-    c.getContext('2d')?.putImageData(img, 0, 0);
-    frames.push(c);
+    const { canvas, ctx } = memoryCanvas(TILE, TILE);
+    ctx.putImageData(img, 0, 0);
+    frames.push(canvas);
   }
   return frames;
 }
 
-const ctxOf = (c: HTMLCanvasElement): CanvasRenderingContext2D => {
-  const ctx = c.getContext('2d');
-  if (!ctx) throw new Error('2D canvas is not available');
-  return ctx;
-};
-
 /** Sunlight moving through the water: soft slanted shafts, and the caustic net dancing on the sand. */
 export class Sunlight {
-  private readonly strip = document.createElement('canvas');
-  private readonly mask = document.createElement('canvas');
-  private readonly rays = document.createElement('canvas');
-  private readonly rayFade = document.createElement('canvas');
-  private readonly stripCtx = ctxOf(this.strip);
-  private readonly rayCtx = ctxOf(this.rays);
+  private readonly strip = memoryCanvas(1, 1);
+  private readonly mask = memoryCanvas(1, 1);
+  private readonly rays = memoryCanvas(1, 1);
+  private readonly rayFade = memoryCanvas(1, 1);
   private readonly patterns: CanvasPattern[];
   private scale = 1;
 
   constructor() {
     this.patterns = causticFrames().map((frame) => {
-      const p = this.stripCtx.createPattern(frame, 'repeat');
+      const p = this.strip.ctx.createPattern(frame, 'repeat');
       if (!p) throw new Error('canvas patterns are not available');
       return p;
     });
@@ -102,11 +96,11 @@ export class Sunlight {
   resize(tank: Tank, canvasWidth: number, canvasHeight: number, scale: number): void {
     this.scale = scale;
     const k = scale * CAUSTIC_RES;
-    this.strip.width = this.mask.width = Math.ceil(canvasWidth * CAUSTIC_RES);
-    this.strip.height = this.mask.height = Math.ceil((TANK_HEIGHT - CAUSTIC_TOP) * k);
+    this.strip.canvas.width = this.mask.canvas.width = Math.ceil(canvasWidth * CAUSTIC_RES);
+    this.strip.canvas.height = this.mask.canvas.height = Math.ceil((TANK_HEIGHT - CAUSTIC_TOP) * k);
 
     // Only the sand catches the light, brighter toward the glass where it is closer to the lamp's focus.
-    const m = ctxOf(this.mask);
+    const m = this.mask.ctx;
     m.setTransform(k, 0, 0, k, 0, -CAUSTIC_TOP * k);
     const g = m.createLinearGradient(0, SAND_BACK_Y - 10, 0, TANK_HEIGHT);
     g.addColorStop(0, 'rgba(0,0,0,0.12)');
@@ -134,26 +128,28 @@ export class Sunlight {
     }
     m.globalCompositeOperation = 'source-over';
 
-    this.rays.width = this.rayFade.width = Math.ceil(canvasWidth * RAY_RES);
-    this.rays.height = this.rayFade.height = Math.ceil(canvasHeight * RAY_RES);
-    const f = ctxOf(this.rayFade);
-    const fade = f.createLinearGradient(0, 0, 0, this.rayFade.height);
+    const fadeCanvas = this.rayFade.canvas;
+    this.rays.canvas.width = fadeCanvas.width = Math.ceil(canvasWidth * RAY_RES);
+    this.rays.canvas.height = fadeCanvas.height = Math.ceil(canvasHeight * RAY_RES);
+    const f = this.rayFade.ctx;
+    const fade = f.createLinearGradient(0, 0, 0, fadeCanvas.height);
     fade.addColorStop(0, 'rgba(0,0,0,1)');
     fade.addColorStop(0.55, 'rgba(0,0,0,0.55)');
     fade.addColorStop(0.9, 'rgba(0,0,0,0)');
     f.fillStyle = fade;
-    f.fillRect(0, 0, this.rayFade.width, this.rayFade.height);
+    f.fillRect(0, 0, fadeCanvas.width, fadeCanvas.height);
   }
 
   /** Call with the world transform set; draws in screen pixels and restores it. */
   drawCaustics(ctx: CanvasRenderingContext2D, pal: Palette, time: number): void {
     if (pal.light < 0.15) return;
-    const s = this.stripCtx;
+    const s = this.strip.ctx;
+    const strip = this.strip.canvas;
     const k = this.scale * CAUSTIC_RES;
     s.setTransform(1, 0, 0, 1, 0, 0);
     s.globalCompositeOperation = 'source-over';
     s.globalAlpha = 1;
-    s.clearRect(0, 0, this.strip.width, this.strip.height);
+    s.clearRect(0, 0, strip.width, strip.height);
     const phase = ((time / LOOP_SECONDS) * FRAMES) % FRAMES;
     const i = Math.floor(phase);
     // Seen at a low angle, the net on the floor is squashed in height.
@@ -163,30 +159,31 @@ export class Sunlight {
     a.setTransform(matrix);
     b.setTransform(matrix);
     s.fillStyle = a;
-    s.fillRect(0, 0, this.strip.width, this.strip.height);
+    s.fillRect(0, 0, strip.width, strip.height);
     s.globalAlpha = phase - i;
     s.fillStyle = b;
-    s.fillRect(0, 0, this.strip.width, this.strip.height);
+    s.fillRect(0, 0, strip.width, strip.height);
     s.globalAlpha = 1;
     s.globalCompositeOperation = 'destination-in';
-    s.drawImage(this.mask, 0, 0);
+    s.drawImage(this.mask.canvas, 0, 0);
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.3 * pal.light;
-    ctx.drawImage(this.strip, 0, CAUSTIC_TOP * this.scale, this.strip.width / CAUSTIC_RES, this.strip.height / CAUSTIC_RES);
+    ctx.drawImage(strip, 0, CAUSTIC_TOP * this.scale, strip.width / CAUSTIC_RES, strip.height / CAUSTIC_RES);
     ctx.restore();
   }
 
   /** Call with the world transform set; draws in screen pixels and restores it. */
   drawShafts(ctx: CanvasRenderingContext2D, tank: Tank, pal: Palette, time: number): void {
     if (pal.light < 0.12) return;
-    const r = this.rayCtx;
+    const r = this.rays.ctx;
+    const rays = this.rays.canvas;
     const k = this.scale * RAY_RES;
     r.setTransform(1, 0, 0, 1, 0, 0);
     r.globalCompositeOperation = 'source-over';
-    r.clearRect(0, 0, this.rays.width, this.rays.height);
+    r.clearRect(0, 0, rays.width, rays.height);
     r.setTransform(k, 0, 0, k, 0, 0);
     const bottom = SAND_BACK_Y + 40;
     for (let i = 0; i < SHAFTS; i++) {
@@ -212,12 +209,12 @@ export class Sunlight {
     }
     r.setTransform(1, 0, 0, 1, 0, 0);
     r.globalCompositeOperation = 'destination-in';
-    r.drawImage(this.rayFade, 0, 0);
+    r.drawImage(this.rayFade.canvas, 0, 0);
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'lighter';
-    ctx.drawImage(this.rays, 0, 0, this.rays.width / RAY_RES, this.rays.height / RAY_RES);
+    ctx.drawImage(rays, 0, 0, rays.width / RAY_RES, rays.height / RAY_RES);
     ctx.restore();
   }
 }
