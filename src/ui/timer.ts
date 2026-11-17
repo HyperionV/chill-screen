@@ -61,7 +61,7 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
   const readout = h('div', { class: 'timer-readout', role: 'timer', 'aria-live': 'off' });
   const cycles = h('span', { class: 'timer-cycles', title: 'Focus sessions finished today' });
   const startBtn = h('button', { class: 'icon-btn', onclick: () => (state.endsAt ? pause() : start()) });
-  const configBtn = h('button', { class: 'text-btn', onclick: () => config.toggle(configBtn) }, 'Config');
+  const configBtn = h('button', { class: 'icon-btn', title: 'Config', 'aria-label': 'Config', onclick: () => config.toggle(configBtn) }, icon(ICONS.gear));
 
   const save = (): void => writeJson(KEY, state);
   const remaining = (): number => (state.endsAt ? state.endsAt - Date.now() : state.remaining);
@@ -142,7 +142,7 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
       h('div', { class: 'timer-face' }, readout, cycles),
       h('div', { class: 'timer-actions' },
         startBtn,
-        h('button', { class: 'icon-btn', onclick: reset, title: 'Back to a fresh focus session', 'aria-label': 'Reset' }, icon(ICONS.reset)),
+        h('button', { class: 'icon-btn', onclick: reset, title: 'Back to a fresh focus session', 'aria-label': 'Reset' }, icon(ICONS.restart)),
         configBtn),
     ),
   };

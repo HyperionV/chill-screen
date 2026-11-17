@@ -622,11 +622,6 @@ body.idle .dock {
   height: 28px;
 }
 
-.timer-actions .text-btn {
-  margin-left: 8px;
-  font-size: 17px;
-}
-
 /* Phones: the panel becomes a sheet above the dock; controls keep their size with a larger touch area. */
 @media (max-width: 520px) {
   .panel {

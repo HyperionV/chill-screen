@@ -149,8 +149,17 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 }
 
 .side-card .icon-btn {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
+  color: #c3d6d0;
+}
+
+.side-card .icon-btn:hover {
+  color: var(--accent);
+}
+
+.side-card-head {
+  align-items: center;
 }
 
 .side-card .quiet-status,
