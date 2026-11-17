@@ -4,8 +4,10 @@ const KEY = 'chillscreen.fonts';
 
 export const FONT_IDS = ['pixel', 'clean', 'serif', 'mono'] as const;
 export type FontId = (typeof FONT_IDS)[number];
-export const SIZE_IDS = ['small', 'medium', 'large', 'extra'] as const;
-export type SizeId = (typeof SIZE_IDS)[number];
+/** Sizes for the content. The clock has one more at the small end: tiny, for a clock that stays out of the way. */
+export const CONTENT_SIZE_IDS = ['small', 'medium', 'large', 'extra'] as const;
+export const CLOCK_SIZE_IDS = ['tiny', ...CONTENT_SIZE_IDS] as const;
+export type SizeId = (typeof CLOCK_SIZE_IDS)[number];
 
 /**
  * The typefaces on offer. Fonts differ a lot in how big they look at the same size, so each carries a fit: the pixel
@@ -19,6 +21,7 @@ export const FONTS: Record<FontId, { label: string; family: string; contentFit: 
 };
 
 export const SIZES: Record<SizeId, { label: string; scale: number }> = {
+  tiny: { label: 'Tiny', scale: 0.5 },
   small: { label: 'Small', scale: 0.85 },
   medium: { label: 'Medium', scale: 1 },
   large: { label: 'Large', scale: 1.2 },
@@ -41,7 +44,7 @@ const DEFAULTS: TypeSettings = { clock: { font: 'clean', size: 'medium' }, conte
 const isLook = (v: unknown): v is Look =>
   typeof v === 'object' && v !== null &&
   'font' in v && FONT_IDS.some((f) => f === v.font) &&
-  'size' in v && SIZE_IDS.some((s) => s === v.size);
+  'size' in v && CLOCK_SIZE_IDS.some((s) => s === v.size);
 const isSettings = (v: unknown): v is TypeSettings =>
   typeof v === 'object' && v !== null && 'clock' in v && isLook(v.clock) && 'content' in v && isLook(v.content);
 
