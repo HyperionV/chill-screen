@@ -4,6 +4,8 @@ export interface ViewFrame {
   dt: number;
   /** Seconds, from the page clock. */
   time: number;
+  /** Where the pointer is, in stage pixels, while it has been moving lately; otherwise null. */
+  pointer: { x: number; y: number } | null;
 }
 
 /** What is seen through the window: the built-in seaside, or the person's own wallpapers. Drawn in stage pixels. */

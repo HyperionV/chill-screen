@@ -3,7 +3,7 @@ import { ICONS } from './icons';
 import { ROTATION_MINUTES, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
 import type { Panel } from './panel';
 
-const SCENE_LABELS: Record<SceneKind, string> = { seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
+const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
 
 /** A word for how hard it is raining, shown beside the slider. */
 const rainWord = (level: number): string => (level === 0 ? 'None' : level < 0.35 ? 'Drizzle' : level < 0.7 ? 'Rain' : 'Downpour');
@@ -71,8 +71,10 @@ export function createSceneryPanel(scenery: SceneSwitch): Panel {
     body.append(field('Scene', segmented('Scene', SCENES, s.scene, (v) => SCENE_LABELS[v], (scene) => scenery.update({ scene }))));
     if (s.scene === 'aquarium') return;
     body.append(rainField(scenery));
-    if (s.scene === 'seaside') {
-      body.append(h('p', { class: 'hint' }, 'Move the pointer across the glass to wipe it.'));
+    if (s.scene === 'journey' || s.scene === 'seaside') {
+      body.append(h('p', { class: 'hint' }, s.scene === 'journey'
+        ? 'A slow ride through forest, meadow, lake and autumn woods. Move the pointer over the grass to startle the animals, and across the glass to wipe it.'
+        : 'Move the pointer across the glass to wipe it.'));
       return;
     }
 
@@ -85,7 +87,7 @@ export function createSceneryPanel(scenery: SceneSwitch): Panel {
     );
     body.append(grid, picker, h('p', { class: 'hint' }, scenery.wallpapers.length
       ? 'Drop pictures anywhere on the screen to add more. They show as pixel art, darker ones at night.'
-      : 'Add wallpapers you love, or drop them anywhere on the screen. The seaside shows until then.'));
+      : 'Add wallpapers you love, or drop them anywhere on the screen. The journey shows until then.'));
     if (!scenery.wallpapers.length) {
       body.append(status);
       return;

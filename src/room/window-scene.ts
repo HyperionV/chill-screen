@@ -6,6 +6,8 @@ import type { OutsideView } from './view';
 import { WindowFrame } from './window-frame';
 
 const FPS_CAP = 30;
+/** The pointer counts as stirring things (scaring animals) this long after it last moved. */
+const POINTER_ACTIVE_SECONDS = 1.2;
 const MAX_DPR = 1.5;
 /** Where the time sits and how tall its digits are, as shares of the height. */
 const CLOCK_Y = 0.43;
@@ -29,8 +31,9 @@ export class WindowScene {
   private running = false;
   private frameId = 0;
   private lastFrame = 0;
-  /** The pointer in stage pixels. */
+  /** The pointer in stage pixels, and the page time it last moved. */
   private pointer: { x: number; y: number } | null = null;
+  private pointerMovedAt = -Infinity;
   frameCost = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement, view: OutsideView, rain: number) {
@@ -81,6 +84,7 @@ export class WindowScene {
     const last = this.pointer;
     if (last && this.rainLevel > 0.02) this.rain.wipe(last.x, last.y, x, y);
     this.pointer = { x, y };
+    this.pointerMovedAt = performance.now() / 1000;
   }
 
   private tick(now: number): void {
@@ -101,7 +105,8 @@ export class WindowScene {
 
     ctx.fillStyle = WAITING_COLOR;
     ctx.fillRect(0, 0, w, h);
-    const look = this.view.draw(ctx, { dt, time }) ?? WAITING_LOOK;
+    const moving = this.pointer && time - this.pointerMovedAt < POINTER_ACTIVE_SECONDS ? this.pointer : null;
+    const look = this.view.draw(ctx, { dt, time, pointer: moving }) ?? WAITING_LOOK;
 
     this.rain.drawOutside(ctx, dt, this.rainLevel, look);
     this.window.draw(ctx, look);

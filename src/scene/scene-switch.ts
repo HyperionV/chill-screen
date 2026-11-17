@@ -1,3 +1,4 @@
+import { Journey } from '../room/journey/journey';
 import { NightSky } from '../room/night-sky';
 import { Sea } from '../room/sea';
 import { Slideshow } from '../room/slideshow';
@@ -6,12 +7,12 @@ import { readJson, writeJson } from '../store';
 import { addWallpapers, listWallpapers, removeWallpaper, type Wallpaper } from '../wallpapers/store';
 import type { TankScene } from './tank-scene';
 
-export const SCENES = ['seaside', 'wallpapers', 'aquarium'] as const;
+export const SCENES = ['journey', 'seaside', 'wallpapers', 'aquarium'] as const;
 export type SceneKind = (typeof SCENES)[number];
 export const ROTATION_MINUTES = [1, 3, 10, 30] as const;
 
 export interface ScenerySettings {
-  /** The scene the person chose. Wallpapers fall back to the seaside until at least one is added. */
+  /** The scene the person chose. Wallpapers fall back to the journey until at least one is added. */
   scene: SceneKind;
   /** Minutes each wallpaper stays before the next one fades in. */
   every: number;
@@ -20,7 +21,7 @@ export interface ScenerySettings {
 }
 
 const KEY = 'chillscreen.scenery';
-const DEFAULTS: ScenerySettings = { scene: 'seaside', every: 3, rain: 0.5 };
+const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rain: 0 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -37,6 +38,7 @@ function loadSettings(): ScenerySettings {
 export class SceneSwitch {
   settings = loadSettings();
   wallpapers: Wallpaper[] = [];
+  private readonly journey: Journey;
   private readonly sea: Sea;
   private readonly slideshow: Slideshow;
   private readonly room: WindowScene;
@@ -44,14 +46,15 @@ export class SceneSwitch {
 
   constructor(private readonly tank: TankScene, sceneryCanvas: HTMLCanvasElement) {
     const nightSky = new NightSky();
+    this.journey = new Journey(nightSky);
     this.sea = new Sea(nightSky);
     this.slideshow = new Slideshow(nightSky, this.settings.every);
-    this.room = new WindowScene(sceneryCanvas, this.sea, this.settings.rain);
+    this.room = new WindowScene(sceneryCanvas, this.journey, this.settings.rain);
   }
 
-  /** The scene actually on screen. */
+  /** The scene actually on screen. Wallpapers fall back to the journey until at least one is added. */
   get showing(): SceneKind {
-    return this.settings.scene === 'wallpapers' && !this.wallpapers.length ? 'seaside' : this.settings.scene;
+    return this.settings.scene === 'wallpapers' && !this.wallpapers.length ? 'journey' : this.settings.scene;
   }
 
   get frameCost(): number {
@@ -117,7 +120,7 @@ export class SceneSwitch {
       this.tank.start();
     } else {
       this.tank.stop();
-      this.room.setView(showing === 'wallpapers' ? this.slideshow : this.sea);
+      this.room.setView(showing === 'wallpapers' ? this.slideshow : showing === 'seaside' ? this.sea : this.journey);
       this.room.start();
     }
     for (const fn of this.listeners) fn();
