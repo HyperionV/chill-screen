@@ -31,19 +31,37 @@
   background: var(--edge);
 }
 
-.side-card {
+/* Two columns of floating cards: notes over the timer on the left, tasks over the reminders on the right. */
+.side-col {
   position: fixed;
   top: 16px;
   bottom: 84px;
   width: min(300px, 24vw);
   display: flex;
   flex-direction: column;
-  /* No box: the words float over the scene, kept readable by a hard one-step shadow like a pixel game's text. */
-  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85);
+  gap: 8px;
   opacity: 0;
   visibility: hidden;
   transform: translateY(8px);
   transition: opacity 0.35s var(--ease), transform 0.35s var(--ease), visibility 0.35s;
+}
+
+.side-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* No box: the words float over the scene, kept readable by a hard one-step shadow like a pixel game's text. */
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.85);
+}
+
+/* The notes and the tasks take the space the smaller cards leave. */
+.side-card.grow {
+  flex: 1;
+}
+
+.side-card:not(.grow) {
+  flex: 0 1 auto;
+  max-height: 46%;
 }
 
 .side-card .notes-area,
@@ -62,24 +80,118 @@
   color: var(--muted);
 }
 
-.side-card.left {
+.side-col.left {
   left: 16px;
 }
 
-.side-card.right {
+.side-col.right {
   right: 16px;
 }
 
-body[data-mode="business"] .side-card {
+body[data-mode="business"] .side-col {
   opacity: 1;
   visibility: visible;
   transform: none;
 }
 
-/* A tool panel (scenery, music, timer) opens in the tasks card's place. */
-body.panel-open[data-mode="business"] .side-card.right {
+/* A tool panel (scenery, music) opens in the right column's place. */
+body.panel-open[data-mode="business"] .side-col.right {
   opacity: 0;
   visibility: hidden;
+}
+
+/* The timer lives in its card in business mode, so its dock button steps aside. */
+body[data-mode="business"] .dock-btn[data-id="timer"] {
+  display: none;
+}
+
+/* The timer, made compact for its card. */
+.side-card .timer {
+  gap: 8px;
+}
+
+.side-card .timer-phase {
+  margin: 0;
+}
+
+.side-card .timer-readout {
+  font-size: 48px;
+}
+
+.side-card .segmented {
+  background: transparent;
+  padding: 0;
+}
+
+/* Reminders. */
+.reminders {
+  display: grid;
+  gap: 10px;
+}
+
+.reminder-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.reminder-add .time-field {
+  width: 118px;
+  flex: none;
+}
+
+.reminder-add .btn {
+  height: 34px;
+}
+
+.reminder-quick {
+  display: flex;
+  gap: 10px;
+}
+
+.reminder-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  line-height: 1.2;
+}
+
+.reminder-time {
+  color: var(--accent);
+}
+
+.side-card-body {
+  overflow-x: hidden;
+}
+
+/* Reminders that went off: banners over the scene at the top, in either mode, until dismissed. */
+.banners {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  display: grid;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px 12px 18px;
+  background: var(--glass-strong);
+  box-shadow: var(--frame);
+  font-size: 24px;
+  pointer-events: auto;
+}
+
+.banner-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .side-card-title {
@@ -95,18 +207,35 @@ body.panel-open[data-mode="business"] .side-card.right {
 
 /* Narrow windows: the two cards share the top, half each. */
 @media (max-width: 900px) {
-  .side-card {
+  /* Four cards in two columns on the top half, leaving the radio and the dock clear. */
+  .side-col {
     top: 8px;
     bottom: auto;
-    height: 36vh;
+    height: 52vh;
     width: calc(50% - 12px);
   }
 
-  .side-card.left {
+  .side-card-title {
+    padding: 8px 6px 2px;
+  }
+
+  .side-card-body {
+    padding: 4px 6px 8px;
+  }
+
+  .side-card .timer-readout {
+    font-size: 36px;
+  }
+
+  .side-card .timer-actions {
+    flex-wrap: wrap;
+  }
+
+  .side-col.left {
     left: 8px;
   }
 
-  .side-card.right {
+  .side-col.right {
     right: 8px;
   }
 }

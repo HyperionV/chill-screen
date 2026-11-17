@@ -47,7 +47,7 @@ export class PanelHost {
     this.current = panel;
     this.titleEl.textContent = panel.title;
     // Bodies stay in the page once shown, so a playing video is not torn down when another panel opens.
-    if (!panel.body.isConnected) this.content.append(panel.body);
+    if (panel.body.parentElement !== this.content) this.content.append(panel.body);
     for (const body of this.content.querySelectorAll<HTMLElement>(':scope > *')) body.hidden = body !== panel.body;
     this.el.classList.add('open');
     this.el.setAttribute('aria-hidden', 'false');

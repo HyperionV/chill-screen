@@ -4,6 +4,7 @@ import { createMode, MODE_LABELS, MODES, type Mode } from './mode';
 import { createMusicPanel } from './music';
 import { createMusicWidget } from './music-widget';
 import { PanelHost, type ToolPanel } from './panel';
+import { createReminders } from './reminders';
 import { createSceneryPanel } from './scenery';
 import { createSideCards } from './side-cards';
 import { createTimerPanel } from './timer';
@@ -15,7 +16,8 @@ const IDLE_MS = 3500;
 
 /**
  * Builds the overlay. Always there: the music player on the window and the dock at the bottom. Zen shows nothing
- * more; business adds the notes (left) and the tasks (right). Scenery, music and the timer open as side panels.
+ * more; business adds the notes and timer (left) and the tasks and reminders (right). Scenery and music open as side
+ * panels, and so does the timer in Zen mode.
  */
 export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
   const host = new PanelHost();
@@ -34,13 +36,13 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
     setVolume: (volume) => player.setVolume(volume),
     openLibrary: () => host.open(music),
   });
-  const tools: ToolPanel[] = [
-    createSceneryPanel(scenery),
-    createTimerPanel((label) => {
-      timerBadge.textContent = label ?? '';
-      timerBadge.hidden = label === null;
-    }),
-  ];
+  const timer = createTimerPanel((label) => {
+    timerBadge.textContent = label ?? '';
+    timerBadge.hidden = label === null;
+  });
+  const tools: ToolPanel[] = [createSceneryPanel(scenery), timer];
+  const reminders = createReminders();
+  const sideCards = createSideCards(timer.body, reminders);
   const extras: Record<string, HTMLElement> = { timer: timerBadge };
 
   const toolButtons = tools.map((p) => {
@@ -53,6 +55,11 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
   const modeButtons = MODES.map((m) => h('button', { class: 'dock-mode', role: 'radio', 'aria-checked': String(m === mode.current()), onclick: () => pick(m) }, MODE_LABELS[m]));
   const pick = (next: Mode): void => {
     mode.set(next);
+    // Business mode shows the timer in its own card, so it comes back from the dock's panel.
+    if (next === 'business') {
+      if (host.openId === timer.id) host.close();
+      sideCards.returnTimer();
+    }
     modeButtons.forEach((b, i) => b.setAttribute('aria-checked', String(MODES[i] === next)));
   };
 
@@ -78,5 +85,5 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
   addEventListener('keydown', wake);
   wake();
 
-  root.append(player.el, ...createSideCards(), createMusicWidget(player, () => host.open(music)), host.el, dock);
+  root.append(player.el, ...sideCards.columns, reminders.banners, createMusicWidget(player, () => host.open(music)), host.el, dock);
 }
