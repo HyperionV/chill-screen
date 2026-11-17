@@ -600,7 +600,7 @@ body.idle .dock {
 .timer {
   display: grid;
   justify-items: start;
-  gap: 4px;
+  gap: 10px;
 }
 
 .timer-face {
@@ -628,6 +628,8 @@ body.idle .dock {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* The icons sit inside their buttons; pull them back so the first one lines up with the time above. */
+  margin-left: -4px;
 }
 
 .timer-actions .icon-btn {

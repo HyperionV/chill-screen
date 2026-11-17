@@ -242,6 +242,19 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   padding: 6px 16px 14px;
 }
 
+/* The small cards (Focus, Reminders) get more air above and below than their one-line contents would give. */
+.side-card:not(.grow) {
+  padding-bottom: 8px;
+}
+
+.side-card:not(.grow) .side-card-head {
+  padding-top: 16px;
+}
+
+.side-card:not(.grow) .side-card-body {
+  padding-top: 12px;
+}
+
 /* Floating settings cards (new reminder, timer config): closed they take no room. */
 .popover {
   position: fixed;
