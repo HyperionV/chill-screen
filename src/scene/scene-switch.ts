@@ -4,7 +4,7 @@ import { PACES, type Pace } from '../room/journey/pace';
 import type { DeckControls } from '../room/music-deck';
 import { NightSky } from '../room/night-sky';
 import { Sea } from '../room/sea';
-import { Slideshow } from '../room/slideshow';
+import { Slideshow, type Rotation } from '../room/slideshow';
 import { WindowScene } from '../room/window-scene';
 import { readJson, writeJson } from '../store';
 import { addWallpapers, listWallpapers, removeWallpaper, type Wallpaper } from '../wallpapers/store';
@@ -13,12 +13,17 @@ import type { TankScene } from './tank-scene';
 export const SCENES = ['journey', 'seaside', 'wallpapers', 'aquarium'] as const;
 export type SceneKind = (typeof SCENES)[number];
 export const ROTATION_MINUTES = [1, 3, 10, 30] as const;
+export const ROTATIONS = ['stay', 'shuffle', 'order'] as const;
 
 export interface ScenerySettings {
   /** The scene the person chose. Wallpapers fall back to the journey until at least one is added. */
   scene: SceneKind;
   /** Minutes each wallpaper stays before the next one fades in. */
   every: number;
+  /** Whether the wallpaper changes by itself, and in what order. */
+  rotation: Rotation;
+  /** The wallpaper last on screen, or null before one has been shown. */
+  wallpaper: string | null;
   /** 0 is no rain, 1 a downpour. */
   rain: number;
   pace: Pace;
@@ -27,7 +32,7 @@ export interface ScenerySettings {
 }
 
 const KEY = 'chillscreen.scenery';
-const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rain: 0, pace: 'gentle', ambience: 0.4 };
+const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rotation: 'shuffle', wallpaper: null, rain: 0, pace: 'gentle', ambience: 0.4 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -36,10 +41,12 @@ function loadSettings(): ScenerySettings {
   const saved = readJson<Record<string, unknown>>(KEY, {}, isRecord);
   const scene = SCENES.find((s) => s === saved.scene) ?? DEFAULTS.scene;
   const every = ROTATION_MINUTES.find((m) => m === saved.every) ?? DEFAULTS.every;
+  const rotation = ROTATIONS.find((r) => r === saved.rotation) ?? DEFAULTS.rotation;
+  const wallpaper = typeof saved.wallpaper === 'string' ? saved.wallpaper : DEFAULTS.wallpaper;
   const rain = typeof saved.rain === 'number' && saved.rain >= 0 && saved.rain <= 1 ? saved.rain : DEFAULTS.rain;
   const pace = PACES.find((p) => p === saved.pace) ?? DEFAULTS.pace;
   const ambience = typeof saved.ambience === 'number' && saved.ambience >= 0 && saved.ambience <= 1 ? saved.ambience : DEFAULTS.ambience;
-  return { scene, every, rain, pace, ambience };
+  return { scene, every, rotation, wallpaper, rain, pace, ambience };
 }
 
 /** Decides which scene runs (only one at a time, to stay light), and keeps the wallpaper list and scenery settings. */
@@ -58,7 +65,11 @@ export class SceneSwitch {
     this.journey = new Journey(nightSky);
     this.journey.setPace(this.settings.pace);
     this.sea = new Sea(nightSky);
-    this.slideshow = new Slideshow(nightSky, this.settings.every);
+    this.slideshow = new Slideshow(nightSky, this.settings.every, this.settings.rotation);
+    this.slideshow.onShown = (id) => {
+      this.save({ wallpaper: id });
+      for (const fn of this.listeners) fn();
+    };
     this.room = new WindowScene(sceneryCanvas, this.journey, this.settings.rain);
   }
 
@@ -82,7 +93,7 @@ export class SceneSwitch {
   update(change: Partial<ScenerySettings>): void {
     this.save(change);
     this.journey.setPace(this.settings.pace);
-    this.slideshow.setEvery(this.settings.every);
+    this.slideshow.configure(this.settings.every, this.settings.rotation);
     this.activate();
   }
 
@@ -120,6 +131,11 @@ export class SceneSwitch {
     void this.slideshow.next();
   }
 
+  /** Shows this wallpaper now. */
+  choose(id: string): void {
+    void this.slideshow.show(id);
+  }
+
   private save(change: Partial<ScenerySettings>): void {
     this.settings = { ...this.settings, ...change };
     writeJson(KEY, this.settings);
@@ -132,7 +148,7 @@ export class SceneSwitch {
       console.warn('[scenery] saved wallpapers could not be read', err);
       this.wallpapers = [];
     }
-    this.slideshow.setWallpapers(this.wallpapers);
+    this.slideshow.setWallpapers(this.wallpapers, this.settings.wallpaper);
     this.activate();
   }
 

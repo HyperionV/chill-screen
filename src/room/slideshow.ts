@@ -24,11 +24,14 @@ function brightnessFor(hour: number): number {
   return 0.18;
 }
 
+/** What happens after a wallpaper has been up for a while: stay, a random one, or the next in the list. */
+export type Rotation = 'stay' | 'shuffle' | 'order';
+
 const ease = (t: number): number => t * t * (3 - 2 * t);
 
 /**
  * The person's wallpapers as the view through the window, opened at pixel-game size so they read as pixel art,
- * rotating every few minutes with a crossfade, preferring darker ones at night, with stars over night skies.
+ * rotating (or not, as chosen) every few minutes with a crossfade, preferring darker ones at night when shuffling, with stars over night skies.
  */
 export class Slideshow implements OutsideView {
   private wallpapers: Wallpaper[] = [];
@@ -40,16 +43,26 @@ export class Slideshow implements OutsideView {
   private w = 0;
   private h = 0;
 
-  constructor(private readonly nightSky: NightSky, private every: number) {}
+  /** Told whenever a wallpaper starts to show, so the choice can be remembered. */
+  onShown: (id: string) => void = () => undefined;
 
-  setEvery(minutes: number): void {
-    this.every = minutes;
+  constructor(private readonly nightSky: NightSky, private every: number, private rotation: Rotation) {}
+
+  configure(every: number, rotation: Rotation): void {
+    this.every = every;
+    this.rotation = rotation;
   }
 
-  setWallpapers(list: Wallpaper[]): void {
+  /** `preferred` is the wallpaper to open on when none is showing yet (the one chosen last time). */
+  setWallpapers(list: Wallpaper[], preferred: string | null): void {
     this.wallpapers = list;
     const top = this.slides[this.slides.length - 1];
-    if (!top || !list.some((w) => w.id === top.id)) void this.next();
+    if (!top || !list.some((w) => w.id === top.id)) void this.show(preferred ?? undefined);
+  }
+
+  /** The wallpaper on screen, or null before the first one is ready. */
+  get current(): string | null {
+    return this.slides[this.slides.length - 1]?.id ?? null;
   }
 
   resize(w: number, h: number): void {
@@ -57,15 +70,21 @@ export class Slideshow implements OutsideView {
     this.h = h;
   }
 
-  /** Fades to another wallpaper, preferring ones whose brightness suits the hour. */
-  async next(): Promise<void> {
+  /** Fades to the next wallpaper the rotation calls for. */
+  next(): Promise<void> {
+    return this.show();
+  }
+
+  /** Fades to the wallpaper with this id, or, with none given, to the one the rotation picks. */
+  async show(id?: string): Promise<void> {
     if (this.loading || !this.wallpapers.length || !this.w) return;
     this.loading = true;
     try {
-      const pick = this.choose();
+      const pick = this.wallpapers.find((w) => w.id === id) ?? this.choose();
       const image = await this.decode(pick.blob);
       this.slides.push({ id: pick.id, image, look: readLook(image), born: performance.now() / 1000 });
-      this.recent = [pick.id, ...this.recent.filter((id) => id !== pick.id)].slice(0, Math.min(RECENT, this.wallpapers.length - 1));
+      this.recent = [pick.id, ...this.recent.filter((r) => r !== pick.id)].slice(0, Math.min(RECENT, this.wallpapers.length - 1));
+      this.onShown(pick.id);
     } catch (err) {
       console.warn('[wallpapers] could not show the next wallpaper', err);
       this.retryAt = performance.now() / 1000 + RETRY_SECONDS;
@@ -80,7 +99,7 @@ export class Slideshow implements OutsideView {
       if (this.wallpapers.length && frame.time > this.retryAt) void this.next();
       return null;
     }
-    if (frame.time - top.born > this.every * 60 && frame.time > this.retryAt) void this.next();
+    if (this.rotation !== 'stay' && frame.time - top.born > this.every * 60 && frame.time > this.retryAt) void this.next();
     const fadeIn = Math.min(1, (frame.time - top.born) / FADE_SECONDS);
     if (fadeIn >= 1 && this.slides.length > 1) this.slides = [top];
     for (const s of this.slides) {
@@ -100,6 +119,10 @@ export class Slideshow implements OutsideView {
   }
 
   private choose(): Wallpaper {
+    if (this.rotation === 'order') {
+      const at = this.wallpapers.findIndex((w) => w.id === this.current);
+      return this.wallpapers[(at + 1) % this.wallpapers.length];
+    }
     const target = brightnessFor(hourNow());
     const fresh = this.wallpapers.filter((w) => !this.recent.includes(w.id));
     const pool = (fresh.length ? fresh : this.wallpapers).slice().sort((a, b) => Math.abs(a.mean - target) - Math.abs(b.mean - target));

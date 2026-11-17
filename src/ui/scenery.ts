@@ -1,10 +1,12 @@
 import { clear, h, icon } from './dom';
 import { ICONS } from './icons';
 import { PACES, type Pace } from '../room/journey/pace';
-import { ROTATION_MINUTES, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
+import type { Rotation } from '../room/slideshow';
+import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
 import type { ToolPanel } from './panel';
 
 const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
+const ROTATION_LABELS: Record<Rotation, string> = { stay: 'Stay', shuffle: 'Shuffle', order: 'In order' };
 const PACE_LABELS: Record<Pace, string> = { still: 'Still', slow: 'Slow', gentle: 'Gentle', brisk: 'Brisk' };
 
 /** A word for how hard it is raining, shown beside the slider. */
@@ -102,26 +104,28 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
     }
 
     const grid = h('div', { class: 'thumbs' },
-      ...scenery.wallpapers.map((w) => h('figure', { class: 'thumb' },
-        h('img', { src: thumbOf(w.id, w.thumb), alt: w.name, loading: 'lazy', draggable: 'false' }),
+      ...scenery.wallpapers.map((w) => h('figure', { class: w.id === s.wallpaper ? 'thumb active' : 'thumb' },
+        h('button', { class: 'thumb-pick', 'aria-label': `Show ${w.name}`, title: w.name, 'aria-pressed': String(w.id === s.wallpaper), onclick: () => scenery.choose(w.id) },
+          h('img', { src: thumbOf(w.id, w.thumb), alt: '', loading: 'lazy', draggable: 'false' })),
         h('button', { class: 'thumb-remove', 'aria-label': `Remove ${w.name}`, title: 'Remove', onclick: () => void scenery.remove(w.id) }, icon(ICONS.close)),
       )),
       h('button', { class: 'thumb add', 'aria-label': 'Add pictures', title: 'Add pictures', onclick: () => picker.click() }, icon(ICONS.plus)),
     );
     body.append(grid, picker, h('p', { class: 'hint' }, scenery.wallpapers.length
-      ? 'Drop pictures anywhere on the screen to add more. They show as pixel art, darker ones at night.'
+      ? 'Pick one to show it. Drop pictures anywhere on the screen to add more; they show as pixel art, darker ones at night.'
       : 'Add wallpapers you love, or drop them anywhere on the screen. The journey shows until then.'));
     if (!scenery.wallpapers.length) {
       body.append(status);
       return;
     }
-    body.append(
-      field('Change every', segmented('Change every', ROTATION_MINUTES, s.every, (m) => `${m} min`, (every) => scenery.update({ every }))),
-      h('div', { class: 'scenery-actions' },
-        h('button', { class: 'btn', onclick: () => scenery.next() }, icon(ICONS.next), 'Next wallpaper'),
-        status,
-      ),
-    );
+    body.append(field('Change', segmented('Change', ROTATIONS, s.rotation, (r) => ROTATION_LABELS[r], (rotation) => scenery.update({ rotation }))));
+    if (s.rotation !== 'stay') {
+      body.append(field('Change every', segmented('Change every', ROTATION_MINUTES, s.every, (m) => `${m} min`, (every) => scenery.update({ every }))));
+    }
+    body.append(h('div', { class: 'scenery-actions' },
+      h('button', { class: 'btn', onclick: () => scenery.next() }, icon(ICONS.next), 'Next wallpaper'),
+      status,
+    ));
   };
 
   scenery.onChange(render);
