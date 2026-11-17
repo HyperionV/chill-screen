@@ -10,7 +10,7 @@ import { createViewField } from './view-field';
 import { segmented } from './segmented';
 import { createTimeField } from './time-field';
 
-const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
+const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Landscape', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
 const ROTATION_LABELS: Record<Rotation, string> = { stay: 'Stay', shuffle: 'Shuffle', order: 'In order' };
 const PACE_LABELS: Record<Pace, string> = { still: 'Still', slow: 'Slow', gentle: 'Gentle', brisk: 'Brisk' };
 
