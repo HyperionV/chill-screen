@@ -3,6 +3,7 @@ import { clear, h, icon } from './dom';
 import { ICONS } from './icons';
 import { createLibrary } from './music-library';
 import { createSetup } from './music-setup';
+import { createPopover } from './popover';
 import { GoogleAuth } from '../music/google-auth';
 import type { MusicPlayer } from '../music/music-player';
 import { playlistIdFrom } from '../music/playlist-link';
@@ -15,19 +16,25 @@ const isString = (v: unknown): v is string => typeof v === 'string';
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : 'Sign-in did not finish. Try again.');
 
-/** A box to paste a YouTube or YouTube Music playlist link into: plays it with no sign-in, in order or shuffled. */
-function createLinkPlayer(player: MusicPlayer): HTMLElement {
+/**
+ * A link button for the Music panel's header. It opens a small card to paste a YouTube or YouTube Music playlist link,
+ * which plays with no sign-in, in order or shuffled. `status` is shown in the panel if the playlist cannot be played.
+ */
+function createLinkPlayer(player: MusicPlayer): { button: HTMLElement; status: HTMLElement } {
   const input = h('input', { class: 'field', type: 'text', placeholder: 'Paste a playlist link', 'aria-label': 'Playlist link', spellcheck: 'false', autocomplete: 'off' });
   input.value = readJson(LINK_KEY, '', isString);
+  const invalid = h('p', { class: 'quiet-status', role: 'status' });
   const status = h('p', { class: 'quiet-status', role: 'status' });
   const play = (shuffle: boolean): void => {
     const id = playlistIdFrom(input.value);
     if (!id) {
-      status.textContent = 'That does not look like a playlist link. It should contain “list=”.';
+      invalid.textContent = 'That does not look like a playlist link. It should contain “list=”.';
       return;
     }
+    invalid.textContent = '';
     status.textContent = '';
     writeJson(LINK_KEY, input.value.trim());
+    popover.close();
     void player.playPlaylist(id, shuffle);
   };
   input.addEventListener('keydown', (e) => {
@@ -36,16 +43,27 @@ function createLinkPlayer(player: MusicPlayer): HTMLElement {
   player.onChange(() => {
     if (player.problem) status.textContent = player.problem;
   });
-  return h('div', { class: 'music-link' },
-    input,
-    h('div', { class: 'music-actions' },
-      h('button', { class: 'btn primary', onclick: () => play(false) }, icon(ICONS.play), 'Play'),
-      h('button', { class: 'btn', onclick: () => play(true) }, 'Shuffle')),
-    status);
+  const popover = createPopover(
+    h('div', { class: 'config' },
+      input,
+      h('div', { class: 'music-actions' },
+        h('button', { class: 'btn primary', onclick: () => play(false) }, icon(ICONS.play), 'Play'),
+        h('button', { class: 'btn', onclick: () => play(true) }, 'Shuffle')),
+      invalid),
+    'Play a playlist link', true);
+  const button = h('button', {
+    class: 'icon-btn', title: 'Play a playlist link', 'aria-label': 'Play a playlist link',
+    onclick: () => {
+      popover.toggle(button);
+      input.focus();
+    },
+  }, icon(ICONS.link));
+  return { button, status };
 }
 
 /** The Music panel: paste a playlist link, or sign in with Google to pick from your own playlists. The player itself is on the window. */
 export function createMusicPanel(player: MusicPlayer): Panel {
+  const link = createLinkPlayer(player);
   const auth = new GoogleAuth();
   const library = createLibrary(new YouTubeApi(auth), player, () => {
     auth.signOut();
@@ -66,7 +84,7 @@ export function createMusicPanel(player: MusicPlayer): Panel {
       show();
       await library.load();
     } catch (err) {
-      status.textContent = interactive ? message(err) : '';
+      status.textContent = interactive ? message(err) : 'Press Sign in to reconnect.';
       show();
     }
   };
@@ -98,7 +116,8 @@ export function createMusicPanel(player: MusicPlayer): Panel {
   return {
     id: 'music',
     title: 'Music',
-    body: h('div', { class: 'music' }, createLinkPlayer(player), browse),
+    action: link.button,
+    body: h('div', { class: 'music' }, link.status, browse),
     onOpen: () => {
       if (!loaded && auth.clientId && auth.wasSignedIn) void signIn(false);
     },

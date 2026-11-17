@@ -10,10 +10,10 @@ export interface Popover {
 }
 
 /**
- * A small floating card for settings that need no space while closed. It lives on the page itself, so a card with
+ * A small floating card for settings that need no space while closed. It opens above its button, or below it for buttons at the top of the screen. It lives on the page itself, so a card with
  * scrolling or clipped contents can still open it, and it closes on Escape or a click anywhere else.
  */
-export function createPopover(content: HTMLElement, label: string): Popover {
+export function createPopover(content: HTMLElement, label: string, opensBelow = false): Popover {
   const el = h('div', { class: 'popover', role: 'dialog', 'aria-label': label, hidden: true }, content);
   document.body.append(el);
   let anchor: HTMLElement | null = null;
@@ -29,7 +29,12 @@ export function createPopover(content: HTMLElement, label: string): Popover {
     // Open toward the middle of the screen, so a card on the right edge grows leftward.
     const left = rect.left > innerWidth / 2 ? rect.right - width : rect.left;
     el.style.left = `${Math.max(EDGE, Math.min(left, innerWidth - width - EDGE))}px`;
-    el.style.bottom = `${innerHeight - rect.top + GAP}px`;
+    if (opensBelow) {
+      el.style.top = `${rect.bottom + GAP}px`;
+      el.style.bottom = 'auto';
+    } else {
+      el.style.bottom = `${innerHeight - rect.top + GAP}px`;
+    }
   };
 
   addEventListener('keydown', (e) => {

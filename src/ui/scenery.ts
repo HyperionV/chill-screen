@@ -4,6 +4,7 @@ import { PACES, type Pace } from '../room/journey/pace';
 import type { Rotation } from '../room/slideshow';
 import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
 import type { ToolPanel } from './panel';
+import { createTimeField } from './time-field';
 
 const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
 const ROTATION_LABELS: Record<Rotation, string> = { stay: 'Stay', shuffle: 'Shuffle', order: 'In order' };
@@ -50,7 +51,7 @@ function rainField(scenery: SceneSwitch): HTMLElement {
   return field(h('span', { class: 'field-label-row' }, 'Rain', word), slider);
 }
 
-/** The Scenery panel: pick the scene, set the rain, manage wallpapers and how they rotate. */
+/** The Scenery panel: pick the scene, the sound and the time of day, set the rain, manage wallpapers and how they rotate. */
 export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   const body = h('div', { class: 'scenery' });
   const status = h('p', { class: 'quiet-status', 'aria-live': 'polite' });
@@ -91,6 +92,7 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
     clear(body);
     body.append(field('Scene', segmented('Scene', SCENES, s.scene, (v) => SCENE_LABELS[v], (scene) => scenery.update({ scene }))));
     body.append(soundField(scenery));
+    body.append(createTimeField());
     if (s.scene === 'aquarium') return;
     body.append(rainField(scenery));
     if (s.scene === 'journey') {

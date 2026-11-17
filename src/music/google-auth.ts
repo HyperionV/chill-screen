@@ -5,19 +5,27 @@ const CLIENT_ID_KEY = 'chillscreen.googleClientId';
 /** Set at build time with VITE_GOOGLE_CLIENT_ID (see .env.example). */
 const BUILT_IN_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
 const SIGNED_IN_KEY = 'chillscreen.googleSignedIn';
+/** The current pass is kept here so a reload within its hour does not ask for sign-in again. */
+const TOKEN_KEY = 'chillscreen.googleToken';
 /** Read-only access to your YouTube account: playlists, liked videos and search. Nothing can be changed. */
 const SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
 /** Ask for a fresh pass a minute before the old one runs out. */
 const EXPIRY_MARGIN_MS = 60_000;
 
 const isString = (v: unknown): v is string => typeof v === 'string';
+interface Pass {
+  value: string;
+  expiresAt: number;
+}
+const isPass = (v: unknown): v is Pass | null =>
+  v === null || (typeof v === 'object' && 'value' in v && typeof v.value === 'string' && 'expiresAt' in v && typeof v.expiresAt === 'number');
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 
 export class GoogleAuthError extends Error {}
 
 /** Signs in with Google in the browser alone and hands out short-lived read-only passes. */
 export class GoogleAuth {
-  private token: { value: string; expiresAt: number } | null = null;
+  private token: Pass | null = readJson<Pass | null>(TOKEN_KEY, null, isPass);
   private client: google.accounts.oauth2.TokenClient | null = null;
   private pending: { promise: Promise<string>; interactive: boolean; resolve: (t: string) => void; reject: (e: Error) => void } | null = null;
 
@@ -65,11 +73,12 @@ export class GoogleAuth {
   /** Forgets the pass so the next call asks Google again (after YouTube rejects one). */
   expire(): void {
     this.token = null;
+    writeJson(TOKEN_KEY, null);
   }
 
   signOut(): void {
     if (this.token) google.accounts.oauth2.revoke(this.token.value);
-    this.token = null;
+    this.expire();
     writeJson(SIGNED_IN_KEY, false);
   }
 
@@ -93,6 +102,7 @@ export class GoogleAuth {
       return;
     }
     this.token = { value: r.access_token, expiresAt: Date.now() + (r.expires_in ?? 3600) * 1000 };
+    writeJson(TOKEN_KEY, this.token);
     writeJson(SIGNED_IN_KEY, true);
     this.pending?.resolve(r.access_token);
     this.pending = null;

@@ -1,3 +1,4 @@
+import { hourNow } from '../scene/clock';
 import type { Pace } from '../room/journey/pace';
 import type { SceneKind } from '../scene/scene-switch';
 
@@ -23,7 +24,7 @@ const BREEZE: Record<SceneKind, number> = { journey: 1, seaside: 0.5, wallpapers
 
 const rand = (lo: number, hi: number): number => lo + Math.random() * (hi - lo);
 const isDaytime = (): boolean => {
-  const hour = new Date().getHours();
+  const hour = hourNow();
   return hour >= DAY_FROM_HOUR && hour < DAY_TO_HOUR;
 };
 
@@ -70,7 +71,11 @@ export class Ambience {
     if (!this.ac) this.build();
     void this.ac?.resume();
     window.clearInterval(this.eventTimer);
-    this.eventTimer = window.setInterval(() => this.occasionalSounds(), EVENT_EVERY_MS);
+    // The levels are refreshed here too, so crickets and birds follow the sky when its clock is moved or sped up.
+    this.eventTimer = window.setInterval(() => {
+      this.apply();
+      this.occasionalSounds();
+    }, EVENT_EVERY_MS);
     this.apply();
   }
 
