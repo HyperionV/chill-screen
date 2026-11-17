@@ -6,6 +6,7 @@ import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch }
 import type { ToolPanel } from './panel';
 import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
+import { journeyList } from './journey-list';
 import { createViewField } from './view-field';
 import { segmented } from './segmented';
 import { createTimeField } from './time-field';
@@ -96,10 +97,12 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
     if (s.scene === 'journey') {
       body.append(field('Pace', segmented('Pace', PACES, s.pace, (pace) => PACE_LABELS[pace], (pace) => scenery.update({ pace }))));
     }
-    if (s.scene === 'journey' || s.scene === 'seaside') {
-      body.append(h('p', { class: 'hint' }, s.scene === 'journey'
-        ? 'Forest, meadow, lake and autumn woods at your pace. Move the pointer over the grass to startle the animals, and across the glass to wipe it.'
-        : 'Move the pointer across the glass to wipe it.'));
+    if (s.scene === 'journey') {
+      body.append(field('Journey', journeyList(s.journey, (journey) => scenery.update({ journey }))));
+      return;
+    }
+    if (s.scene === 'seaside') {
+      body.append(h('p', { class: 'hint' }, 'Move the pointer across the glass to wipe it.'));
       return;
     }
 

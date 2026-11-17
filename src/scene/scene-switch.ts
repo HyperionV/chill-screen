@@ -1,6 +1,7 @@
 import { Ambience } from '../audio/ambience';
-import { Journey } from '../room/journey/journey';
 import { PACES, type Pace } from '../room/journey/pace';
+import type { JourneyView } from '../room/journeys/journey-view';
+import { DEFAULT_JOURNEY, JOURNEYS, JOURNEY_ENTRIES, type JourneyId } from '../room/journeys/registry';
 import type { DeckControls } from '../room/music-deck';
 import { NightSky } from '../room/night-sky';
 import { Sea } from '../room/sea';
@@ -18,6 +19,8 @@ export const ROTATIONS = ['stay', 'shuffle', 'order'] as const;
 export interface ScenerySettings {
   /** The scene the person chose. Wallpapers fall back to the journey until at least one is added. */
   scene: SceneKind;
+  /** Which journey the Journey scene shows. */
+  journey: JourneyId;
   /** Minutes each wallpaper stays before the next one fades in. */
   every: number;
   /** Whether the wallpaper changes by itself, and in what order. */
@@ -32,7 +35,7 @@ export interface ScenerySettings {
 }
 
 const KEY = 'chillscreen.scenery';
-const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rotation: 'shuffle', wallpaper: null, rain: 0, pace: 'gentle', ambience: 0.4 };
+const DEFAULTS: ScenerySettings = { scene: 'journey', journey: DEFAULT_JOURNEY, every: 3, rotation: 'shuffle', wallpaper: null, rain: 0, pace: 'gentle', ambience: 0.4 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -40,20 +43,24 @@ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 function loadSettings(): ScenerySettings {
   const saved = readJson<Record<string, unknown>>(KEY, {}, isRecord);
   const scene = SCENES.find((s) => s === saved.scene) ?? DEFAULTS.scene;
+  // `?journey=night-train` in the address picks one for this visit, handy for sharing and checking.
+  const asked = new URLSearchParams(location.search).get('journey');
+  const journey = JOURNEYS.find((j) => j === asked) ?? JOURNEYS.find((j) => j === saved.journey) ?? DEFAULTS.journey;
   const every = ROTATION_MINUTES.find((m) => m === saved.every) ?? DEFAULTS.every;
   const rotation = ROTATIONS.find((r) => r === saved.rotation) ?? DEFAULTS.rotation;
   const wallpaper = typeof saved.wallpaper === 'string' ? saved.wallpaper : DEFAULTS.wallpaper;
   const rain = typeof saved.rain === 'number' && saved.rain >= 0 && saved.rain <= 1 ? saved.rain : DEFAULTS.rain;
   const pace = PACES.find((p) => p === saved.pace) ?? DEFAULTS.pace;
   const ambience = typeof saved.ambience === 'number' && saved.ambience >= 0 && saved.ambience <= 1 ? saved.ambience : DEFAULTS.ambience;
-  return { scene, every, rotation, wallpaper, rain, pace, ambience };
+  return { scene, journey, every, rotation, wallpaper, rain, pace, ambience };
 }
 
 /** Decides which scene runs (only one at a time, to stay light), and keeps the wallpaper list and scenery settings. */
 export class SceneSwitch {
   settings = loadSettings();
   wallpapers: Wallpaper[] = [];
-  private readonly journey: Journey;
+  private readonly nightSky = new NightSky();
+  private readonly journeys = new Map<JourneyId, JourneyView>();
   private readonly sea: Sea;
   private readonly slideshow: Slideshow;
   private readonly room: WindowScene;
@@ -61,16 +68,25 @@ export class SceneSwitch {
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly tank: TankScene, sceneryCanvas: HTMLCanvasElement) {
-    const nightSky = new NightSky();
-    this.journey = new Journey(nightSky);
-    this.journey.setPace(this.settings.pace);
-    this.sea = new Sea(nightSky);
-    this.slideshow = new Slideshow(nightSky, this.settings.every, this.settings.rotation);
+    this.sea = new Sea(this.nightSky);
+    this.slideshow = new Slideshow(this.nightSky, this.settings.every, this.settings.rotation);
     this.slideshow.onShown = (id) => {
       this.save({ wallpaper: id });
       for (const fn of this.listeners) fn();
     };
-    this.room = new WindowScene(sceneryCanvas, this.journey, this.settings.rain);
+    this.room = new WindowScene(sceneryCanvas, this.journeyView(), this.settings.rain);
+  }
+
+  /** The chosen journey, built the first time it is shown so the others cost nothing. */
+  private journeyView(): JourneyView {
+    const id = this.settings.journey;
+    let view = this.journeys.get(id);
+    if (!view) {
+      view = JOURNEY_ENTRIES[id].create(this.nightSky);
+      this.journeys.set(id, view);
+    }
+    view.setPace(this.settings.pace);
+    return view;
   }
 
   /** The scene actually on screen. Wallpapers fall back to the journey until at least one is added. */
@@ -92,7 +108,6 @@ export class SceneSwitch {
 
   update(change: Partial<ScenerySettings>): void {
     this.save(change);
-    this.journey.setPace(this.settings.pace);
     this.slideshow.configure(this.settings.every, this.settings.rotation);
     this.activate();
   }
@@ -165,7 +180,7 @@ export class SceneSwitch {
       this.tank.start();
     } else {
       this.tank.stop();
-      this.room.setView(showing === 'wallpapers' ? this.slideshow : showing === 'seaside' ? this.sea : this.journey);
+      this.room.setView(showing === 'wallpapers' ? this.slideshow : showing === 'seaside' ? this.sea : this.journeyView());
       this.room.start();
     }
     this.hear();

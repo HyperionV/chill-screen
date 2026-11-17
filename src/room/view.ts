@@ -13,4 +13,6 @@ export interface OutsideView {
   resize(w: number, h: number): void;
   /** Draws the view and returns how its light looks right now, or null when there is nothing to show yet. */
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look | null;
+  /** A click on the glass at this stage point (the radio on the sill has already had its chance). */
+  press?(x: number, y: number): void;
 }

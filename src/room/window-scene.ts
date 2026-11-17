@@ -60,7 +60,8 @@ export class WindowScene {
     canvas.addEventListener('pointercancel', () => this.radio?.endSeek());
     canvas.addEventListener('click', (e) => {
       const [x, y] = this.stage.toStage(e.clientX, e.clientY);
-      this.radio?.press(x, y, performance.now() / 1000);
+      if (this.radio?.press(x, y, performance.now() / 1000)) return;
+      this.view.press?.(x, y);
     });
   }
 
