@@ -30,6 +30,8 @@ export function mountUi(root: HTMLElement, scenery: SceneSwitch): void {
     playing: () => player.playing,
     volume: () => player.volume,
     progress: () => player.fraction,
+    duration: () => player.seconds,
+    seek: (fraction) => player.seek(fraction),
     previous: () => void player.previous(),
     toggle: () => void player.toggle(),
     next: () => void player.next(),

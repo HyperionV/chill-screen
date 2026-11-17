@@ -49,6 +49,13 @@ export class WindowScene {
       this.deck?.leave();
       canvas.classList.remove('over-control');
     });
+    // Pressing the radio's display grabs its slider; the pointer is captured so the drag can leave the display.
+    canvas.addEventListener('pointerdown', (e) => {
+      const [x, y] = this.stage.toStage(e.clientX, e.clientY);
+      if (this.deck?.beginSeek(x, y)) canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointerup', () => this.deck?.endSeek());
+    canvas.addEventListener('pointercancel', () => this.deck?.endSeek());
     canvas.addEventListener('click', (e) => {
       const [x, y] = this.stage.toStage(e.clientX, e.clientY);
       this.deck?.press(x, y, performance.now() / 1000);
@@ -103,6 +110,7 @@ export class WindowScene {
     this.pointer = { x, y };
     this.pointerMovedAt = performance.now() / 1000;
     this.canvas.classList.toggle('over-control', this.deck?.hover(x, y) ?? false);
+    this.deck?.dragTo(x);
   }
 
   private tick(now: number): void {
@@ -136,6 +144,6 @@ export class WindowScene {
       this.rain.drawGlass(screen, dt, this.rainLevel, look);
     });
     // The radio stands in the room, in front of the glass and any rain on it.
-    this.stage.overlay((screen) => this.deck?.draw(screen, dt, time, look));
+    this.stage.overlay((screen) => this.deck?.draw(screen, dt, time, look, this.stage.scale));
   }
 }

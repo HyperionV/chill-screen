@@ -35,6 +35,7 @@ export class MusicPlayer {
   private player: Promise<YT.Player> | null = null;
   private failuresInARow = 0;
   private played = 0;
+  private length = 0;
   private progressTimer = 0;
   private level = readJson(VOLUME_KEY, DEFAULT_VOLUME, isVolume);
   private readonly listeners = new Set<() => void>();
@@ -90,10 +91,23 @@ export class MusicPlayer {
     return this.played;
   }
 
+  /** Length of the current track in seconds; 0 until the player knows it. */
+  get seconds(): number {
+    return this.length;
+  }
+
+  /** Jumps to a point in the current track, 0 to 1. */
+  seek(fraction: number): void {
+    if (this.length <= 0) return;
+    this.played = Math.max(0, Math.min(1, fraction));
+    this.emit();
+    void this.started().then((p) => p?.seekTo(this.played * this.length, true));
+  }
+
   private async refreshProgress(): Promise<void> {
     const player = await this.started();
-    const duration = player?.getDuration() || 0;
-    this.played = player && duration > 0 ? Math.min(1, player.getCurrentTime() / duration) : 0;
+    this.length = player?.getDuration() || 0;
+    this.played = player && this.length > 0 ? Math.min(1, player.getCurrentTime() / this.length) : 0;
     this.emit();
   }
 
@@ -107,6 +121,7 @@ export class MusicPlayer {
     this.position = ((index % n) + n) % n;
     this.isPlaying = true;
     this.played = 0;
+    this.length = 0;
     this.emit();
     const player = await this.ensurePlayer();
     if (player && this.track) player.loadVideoById(this.track.videoId);

@@ -31,15 +31,15 @@ export function plainText(text: string): string {
 /** How wide the text is in pixels, without the trailing gap. */
 export const textWidth = (text: string): number => (text.length ? text.length * ADVANCE - 1 : 0);
 
-/** Draws already-plain text with its top-left corner at (x, y), one fillRect per lit pixel. */
-export function drawText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
+/** Draws already-plain text with its top-left corner at (x, y), one fillRect per lit pixel, each `size` units across. */
+export function drawText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string, size = 1): void {
   ctx.fillStyle = color;
   let cx = Math.round(x);
   for (const ch of text) {
     const rows = ROWS[ch] ?? ROWS[UNKNOWN];
     for (let row = 0; row < GLYPH_H; row++) {
-      for (let col = 0; col < GLYPH_W; col++) if (rows[row][col] === '#') ctx.fillRect(cx + col, y + row, 1, 1);
+      for (let col = 0; col < GLYPH_W; col++) if (rows[row][col] === '#') ctx.fillRect(cx + col * size, y + row * size, size, size);
     }
-    cx += ADVANCE;
+    cx += ADVANCE * size;
   }
 }
