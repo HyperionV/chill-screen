@@ -8,6 +8,8 @@ const PROGRESS_REFRESH_MS = 1000;
 const PLAYER_SCRIPT = 'https://www.youtube.com/iframe_api';
 /** YouTube's player states that matter here. */
 const ENDED = 0;
+/** A playlist link that cannot be played is given up on after this many videos in a row fail. */
+const MAX_PLAYLIST_FAILURES = 3;
 const PLAYING = 1;
 const PAUSED = 2;
 
@@ -23,7 +25,7 @@ function loadPlayerScript(): Promise<void> {
 }
 
 /**
- * Plays a queue of YouTube tracks through YouTube's own embedded player and keeps playing while panels come and
+ * Plays a queue of YouTube tracks, or a whole YouTube playlist from its link, through YouTube's own embedded player and keeps playing while panels come and
  * go. Only the sound is wanted, so the page keeps the video out of sight. Videos that cannot be embedded are skipped.
  */
 export class MusicPlayer {
@@ -34,6 +36,10 @@ export class MusicPlayer {
   private isPlaying = false;
   private player: Promise<YT.Player> | null = null;
   private failuresInARow = 0;
+  /** True while a pasted playlist link plays: YouTube then owns the order and the track names. */
+  private listMode = false;
+  private listTrack: Track | null = null;
+  private problemText = '';
   private played = 0;
   private length = 0;
   private progressTimer = 0;
@@ -41,7 +47,12 @@ export class MusicPlayer {
   private readonly listeners = new Set<() => void>();
 
   get track(): Track | null {
-    return this.queue[this.position] ?? null;
+    return this.listMode ? this.listTrack : (this.queue[this.position] ?? null);
+  }
+
+  /** Why the last thing asked for could not be played; empty when all is well. */
+  get problem(): string {
+    return this.problemText;
   }
 
   get playing(): boolean {
@@ -59,17 +70,40 @@ export class MusicPlayer {
 
   async playQueue(tracks: Track[], start = 0): Promise<void> {
     if (!tracks.length) return;
+    this.listMode = false;
+    this.listTrack = null;
+    this.problemText = '';
     this.queue = tracks;
     this.failuresInARow = 0;
     await this.playAt(start);
   }
 
+  /** Plays a public or unlisted YouTube playlist by its ID, in order or shuffled. No sign-in is needed. */
+  async playPlaylist(listId: string, shuffle: boolean): Promise<void> {
+    this.listMode = true;
+    this.listTrack = null;
+    this.problemText = '';
+    this.queue = [];
+    this.failuresInARow = 0;
+    this.isPlaying = true;
+    this.played = 0;
+    this.length = 0;
+    this.emit();
+    const player = await this.ensurePlayer();
+    if (!player) return;
+    player.loadPlaylist({ list: listId, listType: 'playlist', index: 0 });
+    player.setLoop(true);
+    player.setShuffle(shuffle);
+  }
+
   async next(): Promise<void> {
-    if (this.queue.length) await this.playAt(this.position + 1);
+    if (this.listMode) (await this.started())?.nextVideo();
+    else if (this.queue.length) await this.playAt(this.position + 1);
   }
 
   async previous(): Promise<void> {
-    if (this.queue.length) await this.playAt(this.position - 1);
+    if (this.listMode) (await this.started())?.previousVideo();
+    else if (this.queue.length) await this.playAt(this.position - 1);
   }
 
   async toggle(): Promise<void> {
@@ -107,6 +141,7 @@ export class MusicPlayer {
   private async refreshProgress(): Promise<void> {
     const player = await this.started();
     this.length = player?.getDuration() || 0;
+    if (player && this.listMode) this.readListTrack(player);
     this.played = player && this.length > 0 ? Math.min(1, player.getCurrentTime() / this.length) : 0;
     this.emit();
   }
@@ -152,8 +187,8 @@ export class MusicPlayer {
             player.setVolume(this.level);
             resolve(player);
           },
-          onStateChange: (e) => this.onState(e.data),
-          onError: () => void this.skipUnplayable(),
+          onStateChange: (e) => this.onState(e.data, player),
+          onError: () => void this.skipUnplayable(player),
           // The browser refused to start the video by itself; the play button then shows Play and starts it.
           onAutoplayBlocked: () => {
             this.isPlaying = false;
@@ -164,12 +199,22 @@ export class MusicPlayer {
     });
   }
 
-  private onState(state: number): void {
-    if (state === ENDED) {
+  /** In a playlist, YouTube picks the tracks, so the name on show is whatever it says is playing. */
+  private readListTrack(player: YT.Player): void {
+    const { video_id: videoId, title, author } = player.getVideoData();
+    if (!videoId || videoId === this.listTrack?.videoId) return;
+    this.listTrack = { videoId, title, channel: author, thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` };
+    this.played = 0;
+  }
+
+  private onState(state: number, player: YT.Player): void {
+    // In a playlist YouTube moves on by itself; for a queue this player does.
+    if (state === ENDED && !this.listMode) {
       void this.next();
       return;
     }
     if (state === PLAYING) this.failuresInARow = 0;
+    if (state === PLAYING && this.listMode) this.readListTrack(player);
     if (state === PLAYING || state === PAUSED) {
       this.isPlaying = state === PLAYING;
       clearInterval(this.progressTimer);
@@ -179,14 +224,17 @@ export class MusicPlayer {
   }
 
   /** Some videos cannot be embedded. Move on, and stop only if every track in the queue fails in a row. */
-  private async skipUnplayable(): Promise<void> {
+  private async skipUnplayable(player: YT.Player): Promise<void> {
     this.failuresInARow++;
-    if (this.failuresInARow >= this.queue.length) {
+    const limit = this.listMode ? MAX_PLAYLIST_FAILURES : this.queue.length;
+    if (this.failuresInARow >= limit) {
       this.isPlaying = false;
+      if (this.listMode) this.problemText = 'That playlist could not be played. It needs to be public or unlisted, and allow embedding.';
       this.emit();
       return;
     }
-    await this.next();
+    if (this.listMode) player.nextVideo();
+    else await this.next();
   }
 
   private emit(): void {

@@ -5,6 +5,7 @@ import { SceneSwitch } from './scene/scene-switch';
 import { TankScene } from './scene/tank-scene';
 import { mountUi } from './ui/app';
 import { mountFishLabel } from './ui/fish-label';
+import { keepStorage } from './store';
 
 const tankCanvas = document.querySelector<HTMLCanvasElement>('#tank');
 const sceneryCanvas = document.querySelector<HTMLCanvasElement>('#scenery');
@@ -18,6 +19,7 @@ const tank: TankScene = new TankScene(tankCanvas, {
 const scenery = new SceneSwitch(tank, sceneryCanvas);
 mountUi(uiRoot, scenery);
 void scenery.init();
+keepStorage();
 
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch((err: unknown) => console.warn('[app] offline support unavailable', err));

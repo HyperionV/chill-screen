@@ -21,3 +21,12 @@ export function writeJson(key: string, value: unknown): void {
     console.warn(`[store] could not save ${key}`, err);
   }
 }
+
+/**
+ * Asks the browser to keep this site's data (notes, tasks, settings, wallpapers) instead of clearing it when disk space
+ * runs low. Browsers decide on their own, often silently; installed or frequently visited sites are granted it.
+ */
+export function keepStorage(): void {
+  if (!navigator.storage?.persist) return;
+  navigator.storage.persist().catch((err: unknown) => console.warn('[store] could not ask to keep data', err));
+}

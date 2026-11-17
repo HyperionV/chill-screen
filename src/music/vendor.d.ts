@@ -40,6 +40,13 @@ declare namespace YT {
       },
     );
     loadVideoById(id: string): void;
+    loadPlaylist(options: { list: string; listType: 'playlist'; index?: number }): void;
+    setShuffle(shuffle: boolean): void;
+    setLoop(loop: boolean): void;
+    nextVideo(): void;
+    previousVideo(): void;
+    getPlaylist(): string[] | null;
+    getVideoData(): { video_id: string; title: string; author: string };
     playVideo(): void;
     pauseVideo(): void;
     seekTo(seconds: number, allowSeekAhead: boolean): void;

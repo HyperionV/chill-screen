@@ -2,6 +2,8 @@ import { loadScript } from './script-loader';
 import { readJson, writeJson } from '../store';
 
 const CLIENT_ID_KEY = 'chillscreen.googleClientId';
+/** Set at build time with VITE_GOOGLE_CLIENT_ID (see .env.example). */
+const BUILT_IN_CLIENT_ID = String(import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '').trim();
 const SIGNED_IN_KEY = 'chillscreen.googleSignedIn';
 /** Read-only access to your YouTube account: playlists, liked videos and search. Nothing can be changed. */
 const SCOPE = 'https://www.googleapis.com/auth/youtube.readonly';
@@ -19,8 +21,14 @@ export class GoogleAuth {
   private client: google.accounts.oauth2.TokenClient | null = null;
   private pending: { promise: Promise<string>; interactive: boolean; resolve: (t: string) => void; reject: (e: Error) => void } | null = null;
 
+  /** The ID baked into this build (the owner's, public by design), else one pasted in on this machine. */
   get clientId(): string {
-    return readJson(CLIENT_ID_KEY, '', isString);
+    return BUILT_IN_CLIENT_ID || readJson(CLIENT_ID_KEY, '', isString);
+  }
+
+  /** True when this build already carries a client ID, so nobody has to set one up. */
+  get isBuiltIn(): boolean {
+    return BUILT_IN_CLIENT_ID !== '';
   }
 
   setClientId(id: string): void {
