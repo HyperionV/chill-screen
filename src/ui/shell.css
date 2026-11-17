@@ -267,7 +267,8 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 }
 
 .popover:has(.time-field),
-.popover:has(.fonts-field) {
+.popover:has(.fonts-field),
+.popover:has(.view-field) {
   width: 320px;
 }
 
@@ -337,4 +338,40 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 
 .type-group .field-label {
   color: var(--muted);
+}
+
+/* Zen's timer: a small floating card above the dock, set to the right of the radio so it never covers it. */
+.focus-float {
+  position: fixed;
+  left: calc(50% + 160px);
+  bottom: 84px;
+  z-index: 12;
+  padding: 12px 16px;
+  background: var(--glass-strong);
+  box-shadow: var(--frame);
+  transition: opacity 0.6s var(--ease);
+}
+
+@media (max-width: 900px) {
+  .focus-float {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
+.focus-float .icon-btn {
+  color: #c3d6d0;
+}
+
+.focus-float .icon-btn:hover {
+  color: var(--accent);
+}
+
+/* While nothing is being touched the card dims instead of vanishing, so a running session can still be glanced at. */
+body.idle .focus-float {
+  opacity: 0.45;
+}
+
+body[data-mode="business"] .focus-float {
+  display: none;
 }

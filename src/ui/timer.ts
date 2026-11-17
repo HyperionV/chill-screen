@@ -50,7 +50,7 @@ const format = (ms: number): string => {
 };
 
 /** Focus timer: alternates focus and rest, keeps running across reloads, chimes at each change. */
-export function createTimerPanel(onTick: (label: string | null) => void): ToolPanel {
+export function createTimerPanel(onTick: (label: string | null, active: boolean) => void): ToolPanel {
   const initial: TimerState = { focusMinutes: PRESETS[0].focus, restMinutes: PRESETS[0].rest, phase: 'focus', endsAt: null, remaining: PRESETS[0].focus * MINUTE, done: 0, day: today() };
   const state = readJson<TimerState>(KEY, initial, isTimerState);
   if (state.day !== today()) {
@@ -125,7 +125,9 @@ export function createTimerPanel(onTick: (label: string | null) => void): ToolPa
     startBtn.setAttribute('aria-label', startLabel);
     focusField.value = String(state.focusMinutes);
     restField.value = String(state.restMinutes);
-    onTick(state.endsAt ? `${state.phase === 'focus' ? 'Focus' : 'Rest'} ${format(left)}` : null);
+    // A session is under way once it has been started, until it is reset: running, paused part-way, or resting.
+    const active = state.endsAt !== null || state.phase === 'rest' || state.remaining < phaseLength(state);
+    onTick(state.endsAt ? `${state.phase === 'focus' ? 'Focus' : 'Rest'} ${format(left)}` : null, active);
   };
 
   window.setInterval(() => {

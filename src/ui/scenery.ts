@@ -6,6 +6,7 @@ import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch }
 import type { ToolPanel } from './panel';
 import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
+import { createViewField } from './view-field';
 import { segmented } from './segmented';
 import { createTimeField } from './time-field';
 
@@ -49,7 +50,7 @@ function rainField(scenery: SceneSwitch): HTMLElement {
   return field(h('span', { class: 'field-label-row' }, 'Rain', word), slider);
 }
 
-/** The Scenery panel: pick the scene and the sound, set the rain, manage wallpapers and how they rotate. */
+/** The Settings panel: pick the scene and the sound, set the rain, manage wallpapers and how they rotate. */
 export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   const body = h('div', { class: 'scenery' });
   const status = h('p', { class: 'quiet-status', 'aria-live': 'polite' });
@@ -136,7 +137,10 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   // Fonts are just as universal: the clock and the content each get their own font and size.
   const fonts = createPopover(createFontsField(), 'Fonts', true);
   const fontsButton = h('button', { class: 'icon-btn', title: 'Fonts', 'aria-label': 'Fonts', onclick: () => fonts.toggle(fontsButton) }, icon(ICONS.fonts));
-  return { id: 'scenery', title: 'Scenery', icon: ICONS.scenery, body, endAction: h('span', { class: 'panel-actions' }, fontsButton, timeButton) };
+  // So is the view: with or without the window around it.
+  const view = createPopover(createViewField(), 'View', true);
+  const viewButton = h('button', { class: 'icon-btn', title: 'View', 'aria-label': 'View', onclick: () => view.toggle(viewButton) }, icon(ICONS.view));
+  return { id: 'scenery', title: 'Settings', icon: ICONS.settings, body, endAction: h('span', { class: 'panel-actions' }, viewButton, fontsButton, timeButton) };
 }
 
 /** Lets pictures be dropped anywhere on the screen, with a quiet frame showing where they will go. */

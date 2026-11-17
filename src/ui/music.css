@@ -134,7 +134,8 @@
   transform: translateX(-50%);
 }
 
-body[data-scene="aquarium"] .music-widget {
+body[data-scene="aquarium"] .music-widget,
+body[data-frame="none"] .music-widget {
   display: flex;
 }
 
