@@ -98,7 +98,7 @@ export function createMusicPanel(player: MusicPlayer): Panel {
     }
     if (!auth.wasSignedIn || !loaded) {
       browse.append(
-        h('p', { class: 'hint' }, 'Or sign in with Google to reach your own playlists and liked videos. ChillScreen only reads them.'),
+        h('p', { class: 'hint' }, 'Sign in with Google to reach your own playlists and liked videos. ChillScreen only reads them.'),
         h('div', { class: 'music-actions' },
           h('button', { class: 'btn primary', onclick: () => void signIn(true) }, 'Sign in with Google'),
           ...(auth.isBuiltIn ? [] : [h('button', { class: 'text-btn', onclick: () => {
