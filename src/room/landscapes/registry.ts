@@ -27,7 +27,7 @@ interface LandscapeEntry {
 }
 
 export const LANDSCAPE_ENTRIES: Record<LandscapeId, LandscapeEntry> = {
-  seaside: { label: 'Seaside', create: createSeaside, hint: 'Waves, gulls and a lighthouse at night.' },
+  seaside: { label: 'Seaside', create: createSeaside, hint: 'Beach, harbour and lighthouse. Find the crab, the fish and a bottle note.' },
   'pine-forest': { label: 'Pine Forest', create: createPineForest, hint: 'Tall pines in the mist. Wake the deer and the owl.' },
   'mirror-lake': { label: 'Mirror Lake', create: createMirrorLake, hint: 'A still lake that mirrors the sky. Touch the water to send ripples.' },
   'cherry-grove': { label: 'Cherry Blossom Grove', create: createCherryGrove, hint: 'Petals on the wind. Shake the trees with the pointer.' },
