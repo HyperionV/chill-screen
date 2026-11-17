@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { OutsideView } from '../../view';
-import { LandscapePlaceholder } from '../placeholder';
+import { CherryGrove } from './view';
 
 export function createCherryGrove(_nightSky: NightSky): OutsideView {
-  return new LandscapePlaceholder('Cherry Blossom Grove');
+  return new CherryGrove(_nightSky);
 }
