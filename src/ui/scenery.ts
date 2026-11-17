@@ -10,6 +10,23 @@ const PACE_LABELS: Record<Pace, string> = { still: 'Still', slow: 'Slow', gentle
 /** A word for how hard it is raining, shown beside the slider. */
 const rainWord = (level: number): string => (level === 0 ? 'None' : level < 0.35 ? 'Drizzle' : level < 0.7 ? 'Rain' : 'Downpour');
 
+/** A word for how loud the background sound is. */
+const soundWord = (level: number): string => (level === 0 ? 'Off' : level < 0.35 ? 'Soft' : level < 0.7 ? 'Medium' : 'Full');
+
+/** The background sound slider: rain, wind, waves and the like, following the scene. */
+function soundField(scenery: SceneSwitch): HTMLElement {
+  const word = h('span', { class: 'field-value' }, soundWord(scenery.settings.ambience));
+  const slider = h('input', {
+    type: 'range', class: 'slider', min: 0, max: 100, step: 1, value: Math.round(scenery.settings.ambience * 100), 'aria-label': 'Ambient sound',
+  });
+  slider.addEventListener('input', () => {
+    const level = Number(slider.value) / 100;
+    word.textContent = soundWord(level);
+    scenery.setAmbience(level);
+  });
+  return field(h('span', { class: 'field-label-row' }, 'Sound', word), slider);
+}
+
 function segmented<T extends string | number>(label: string, options: readonly T[], current: T, name: (v: T) => string, pick: (v: T) => void): HTMLElement {
   return h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': label },
     ...options.map((v) => h('button', { class: 'seg', role: 'radio', 'aria-checked': String(v === current), onclick: () => pick(v) }, name(v))));
@@ -71,6 +88,7 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
     }
     clear(body);
     body.append(field('Scene', segmented('Scene', SCENES, s.scene, (v) => SCENE_LABELS[v], (scene) => scenery.update({ scene }))));
+    body.append(soundField(scenery));
     if (s.scene === 'aquarium') return;
     body.append(rainField(scenery));
     if (s.scene === 'journey') {

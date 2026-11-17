@@ -1,3 +1,4 @@
+import { Ambience } from '../audio/ambience';
 import { Journey } from '../room/journey/journey';
 import { PACES, type Pace } from '../room/journey/pace';
 import type { DeckControls } from '../room/music-deck';
@@ -21,10 +22,12 @@ export interface ScenerySettings {
   /** 0 is no rain, 1 a downpour. */
   rain: number;
   pace: Pace;
+  /** How loud the background sound is, 0 (off) to 1. */
+  ambience: number;
 }
 
 const KEY = 'chillscreen.scenery';
-const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rain: 0, pace: 'gentle' };
+const DEFAULTS: ScenerySettings = { scene: 'journey', every: 3, rain: 0, pace: 'gentle', ambience: 0.4 };
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
@@ -35,7 +38,8 @@ function loadSettings(): ScenerySettings {
   const every = ROTATION_MINUTES.find((m) => m === saved.every) ?? DEFAULTS.every;
   const rain = typeof saved.rain === 'number' && saved.rain >= 0 && saved.rain <= 1 ? saved.rain : DEFAULTS.rain;
   const pace = PACES.find((p) => p === saved.pace) ?? DEFAULTS.pace;
-  return { scene, every, rain, pace };
+  const ambience = typeof saved.ambience === 'number' && saved.ambience >= 0 && saved.ambience <= 1 ? saved.ambience : DEFAULTS.ambience;
+  return { scene, every, rain, pace, ambience };
 }
 
 /** Decides which scene runs (only one at a time, to stay light), and keeps the wallpaper list and scenery settings. */
@@ -46,6 +50,7 @@ export class SceneSwitch {
   private readonly sea: Sea;
   private readonly slideshow: Slideshow;
   private readonly room: WindowScene;
+  private readonly sound = new Ambience();
   private readonly listeners = new Set<() => void>();
 
   constructor(private readonly tank: TankScene, sceneryCanvas: HTMLCanvasElement) {
@@ -90,6 +95,13 @@ export class SceneSwitch {
   setRain(rain: number): void {
     this.save({ rain });
     this.room.setRain(rain);
+    this.hear();
+  }
+
+  /** Changes the loudness of the background sound without redrawing the panel. */
+  setAmbience(ambience: number): void {
+    this.save({ ambience });
+    this.hear();
   }
 
   async add(files: Iterable<File>): Promise<{ added: number; skipped: string[] }> {
@@ -124,6 +136,10 @@ export class SceneSwitch {
     this.activate();
   }
 
+  private hear(): void {
+    this.sound.set({ scene: this.showing, rain: this.settings.rain, pace: this.settings.pace, volume: this.settings.ambience });
+  }
+
   private activate(): void {
     const showing = this.showing;
     // The style sheet needs to know: the aquarium has no window sill, so the player shows as a plain bar there.
@@ -136,6 +152,7 @@ export class SceneSwitch {
       this.room.setView(showing === 'wallpapers' ? this.slideshow : showing === 'seaside' ? this.sea : this.journey);
       this.room.start();
     }
+    this.hear();
     for (const fn of this.listeners) fn();
   }
 }

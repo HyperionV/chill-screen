@@ -1,7 +1,7 @@
 /** Screen pixels per icon pixel. Whole numbers keep the squares crisp. */
 const ICON_SCALE = 2;
 /** The small control icons are drawn on a 7 by 7 grid at this scale, so they all share one size and weight. */
-const CONTROL_SCALE = 3;
+const CONTROL_SCALE = 2;
 
 /** Turns rows of `#` and `.` into an SVG of square pixels in the current text colour. */
 function pixels(rows: string[], scale = ICON_SCALE): string {

@@ -618,8 +618,8 @@ body.idle .dock {
 }
 
 .timer-actions .icon-btn {
-  width: 28px;
-  height: 28px;
+  width: 22px;
+  height: 22px;
 }
 
 /* Phones: the panel becomes a sheet above the dock; controls keep their size with a larger touch area. */
