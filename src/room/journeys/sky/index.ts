@@ -1,7 +1,7 @@
 import type { NightSky } from '../../night-sky';
 import type { JourneyView } from '../journey-view';
-import { Placeholder } from '../placeholder';
+import { SkyVoyage } from './voyage';
 
 export function createSkyVoyage(_nightSky: NightSky): JourneyView {
-  return new Placeholder('Sky Voyage');
+  return new SkyVoyage(_nightSky);
 }
