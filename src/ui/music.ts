@@ -2,19 +2,17 @@ import './music.css';
 import { clear, h } from './dom';
 import { ICONS } from './icons';
 import { createLibrary } from './music-library';
-import { createNowPlaying } from './music-now-playing';
 import { createSetup } from './music-setup';
 import { GoogleAuth } from '../music/google-auth';
-import { MusicPlayer } from '../music/music-player';
+import type { MusicPlayer } from '../music/music-player';
 import { YouTubeApi } from '../music/youtube-api';
 import type { Panel } from './panel';
 
 const message = (err: unknown): string => (err instanceof Error ? err.message : 'Sign-in did not finish. Try again.');
 
-/** The Music panel: sign in with Google, pick from your playlists or search, and play through the page. */
-export function createMusicPanel(): Panel {
+/** The Music panel: sign in with Google, then pick from your playlists or search. The player itself is on the window. */
+export function createMusicPanel(player: MusicPlayer): Panel {
   const auth = new GoogleAuth();
-  const player = new MusicPlayer();
   const library = createLibrary(new YouTubeApi(auth), player, () => {
     auth.signOut();
     library.reset();
@@ -67,7 +65,7 @@ export function createMusicPanel(): Panel {
     id: 'music',
     title: 'Music',
     icon: ICONS.music,
-    body: h('div', { class: 'music' }, createNowPlaying(player), browse),
+    body: h('div', { class: 'music' }, browse),
     onOpen: () => {
       if (!loaded && auth.clientId && auth.wasSignedIn) void signIn(false);
     },

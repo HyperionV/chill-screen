@@ -1,94 +1,7 @@
-/* Music panel: the video, the controls, then a setup guide, a sign-in prompt or the library. */
+/* Music: the player on the window, and the panel behind it (a setup guide, a sign-in prompt or the library). */
 .music {
   display: grid;
   gap: 14px;
-}
-
-.now-playing {
-  display: grid;
-  gap: 10px;
-}
-
-.np-video {
-  height: 200px;
-  overflow: hidden;
-  border-radius: var(--radius-sm);
-  background: #000;
-}
-
-.np-embed,
-.np-embed iframe {
-  width: 100%;
-  height: 100%;
-  border: 0;
-}
-
-.np-text {
-  min-width: 0;
-}
-
-.np-title,
-.np-channel {
-  margin: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.np-title {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.np-channel {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 12.5px;
-}
-
-.np-progress {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 8px;
-  color: var(--faint);
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-}
-
-.np-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.np-play {
-  width: 40px;
-  height: 40px;
-  color: var(--accent-ink);
-  background: var(--accent);
-  border-radius: var(--radius);
-}
-
-.np-play:hover {
-  color: var(--accent-ink);
-  background: #f5d594;
-}
-
-.np-volume-icon {
-  display: grid;
-  margin-left: auto;
-  color: var(--muted);
-}
-
-.np-volume-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.np-volume {
-  width: 84px;
-  flex: none;
 }
 
 .music-setup .steps {
@@ -208,4 +121,102 @@
   display: flex;
   justify-content: space-between;
   margin-top: 12px;
+}
+
+/* The player on the window: sits above the sill, in every mode. */
+.music-widget {
+  position: fixed;
+  left: 50%;
+  bottom: 17vh;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(440px, calc(100vw - 16px));
+  padding: 6px 8px;
+  overflow: hidden;
+  border-radius: 14px;
+  background: var(--glass);
+  border: 1px solid var(--edge);
+  backdrop-filter: blur(18px) saturate(1.2);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.32);
+  transform: translateX(-50%);
+}
+
+.mw-play {
+  width: 36px;
+  height: 36px;
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+.mw-play:hover {
+  color: var(--accent-ink);
+  background: #f5d594;
+}
+
+.mw-text {
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.mw-title,
+.mw-channel {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mw-title {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.mw-channel {
+  margin-top: 1px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mw-volume-icon {
+  display: grid;
+  color: var(--muted);
+}
+
+.mw-volume-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mw-volume {
+  width: 64px;
+  flex: none;
+}
+
+.mw-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 0;
+  background: var(--accent);
+  transition: width 1s linear;
+}
+
+/* YouTube's player must stay in the page to play, but only its sound is wanted: it sits out of sight. */
+.audio-host {
+  position: fixed;
+  left: -400px;
+  top: 0;
+  width: 200px;
+  height: 200px;
+  pointer-events: none !important;
+}
+
+@media (max-width: 520px) {
+  .mw-volume,
+  .mw-volume-icon {
+    display: none;
+  }
 }
