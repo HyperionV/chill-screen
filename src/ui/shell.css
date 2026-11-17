@@ -12,7 +12,7 @@
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 20px;
+  font-size: calc(20px * var(--content-scale, 1));
   transition: background 0.2s var(--ease), color 0.2s var(--ease);
 }
 
@@ -107,7 +107,7 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 
 /* Small, quiet type on the floating cards. */
 .side-card {
-  font-size: 18px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
 .side-card-head {
@@ -119,11 +119,11 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 
 .side-card-title {
   color: var(--muted);
-  font-size: 18px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
 .side-card-head .text-btn {
-  font-size: 17px;
+  font-size: calc(17px * var(--content-scale, 1));
 }
 
 .side-card .notes-saved {
@@ -132,7 +132,7 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 
 .side-card .field {
   height: 30px;
-  font-size: 18px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
 .side-card .tasks {
@@ -164,7 +164,7 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
 
 .side-card .quiet-status,
 .side-card .text-btn {
-  font-size: 16px;
+  font-size: calc(16px * var(--content-scale, 1));
 }
 
 /* Reminders. */
@@ -225,7 +225,7 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   padding: 12px 14px 12px 18px;
   background: var(--glass-strong);
   box-shadow: var(--frame);
-  font-size: 24px;
+  font-size: calc(24px * var(--content-scale, 1));
   pointer-events: auto;
 }
 
@@ -263,10 +263,11 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   padding: 14px;
   background: var(--glass-strong);
   box-shadow: var(--frame);
-  font-size: 18px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
-.popover:has(.time-field) {
+.popover:has(.time-field),
+.popover:has(.fonts-field) {
   width: 320px;
 }
 
@@ -318,4 +319,22 @@ body[data-mode="business"] .dock-btn[data-id="timer"] {
   .side-col.right {
     right: 8px;
   }
+}
+
+.panel-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.type-group {
+  display: grid;
+  gap: 6px;
+}
+
+.type-group + .type-group {
+  margin-top: 14px;
+}
+
+.type-group .field-label {
+  color: var(--muted);
 }

@@ -1,7 +1,7 @@
 import { mix, type RGB } from '../render/color';
 import { memoryCanvas } from '../render/pixel-stage';
+import { clockLook } from '../scene/typography';
 
-const FONT = '"Outfit Variable", "Segoe UI Variable", sans-serif';
 const WHITE: RGB = [255, 255, 255];
 const SHADOW = 'rgba(10,14,26,0.5)';
 
@@ -35,11 +35,12 @@ export class ClockFace {
   draw(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, tint: RGB, scale: number): void {
     const { time, date } = readout(new Date());
     const color = mix(WHITE, mix(tint, WHITE, 0.55), 0.3);
-    const px = Math.round(size * scale);
-    const fontReady = document.fonts.check(`300 ${px}px ${FONT}`);
-    const key = [time, date, px, color.map((v) => Math.round(v / 8)).join(','), fontReady].join('|');
-    if (this.cache?.key !== key) this.cache = { key, canvas: render(time, date, px, color) };
-    if (!fontReady) void document.fonts.load(`300 ${px}px ${FONT}`);
+    const look = clockLook();
+    const px = Math.round(size * scale * look.scale);
+    const fontReady = document.fonts.check(`300 ${px}px ${look.family}`);
+    const key = [time, date, px, look.family, color.map((v) => Math.round(v / 8)).join(','), fontReady].join('|');
+    if (this.cache?.key !== key) this.cache = { key, canvas: render(time, date, px, color, look.family) };
+    if (!fontReady) void document.fonts.load(`300 ${px}px ${look.family}`);
     const c = this.cache.canvas;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -49,9 +50,9 @@ export class ClockFace {
 }
 
 /** Draws the lettering at screen size with a soft shadow, so it reads on any sky. */
-function render(time: string, date: string, size: number, color: RGB): HTMLCanvasElement {
-  const timeFont = `300 ${size}px ${FONT}`;
-  const dateFont = `600 ${Math.max(12, Math.round(size * 0.24))}px ${FONT}`;
+function render(time: string, date: string, size: number, color: RGB, family: string): HTMLCanvasElement {
+  const timeFont = `300 ${size}px ${family}`;
+  const dateFont = `600 ${Math.max(12, Math.round(size * 0.24))}px ${family}`;
   const { canvas, ctx } = memoryCanvas(1, 1);
   ctx.font = timeFont;
   const timeW = ctx.measureText(time).width;

@@ -4,7 +4,9 @@ import { PACES, type Pace } from '../room/journey/pace';
 import type { Rotation } from '../room/slideshow';
 import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch } from '../scene/scene-switch';
 import type { ToolPanel } from './panel';
+import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
+import { segmented } from './segmented';
 import { createTimeField } from './time-field';
 
 const SCENE_LABELS: Record<SceneKind, string> = { journey: 'Journey', seaside: 'Seaside', wallpapers: 'Wallpapers', aquarium: 'Aquarium' };
@@ -29,11 +31,6 @@ function soundField(scenery: SceneSwitch): HTMLElement {
     scenery.setAmbience(level);
   });
   return field(h('span', { class: 'field-label-row' }, 'Sound', word), slider);
-}
-
-function segmented<T extends string | number>(label: string, options: readonly T[], current: T, name: (v: T) => string, pick: (v: T) => void): HTMLElement {
-  return h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': label },
-    ...options.map((v) => h('button', { class: 'seg', role: 'radio', 'aria-checked': String(v === current), onclick: () => pick(v) }, name(v))));
 }
 
 const field = (label: string | HTMLElement, control: HTMLElement): HTMLElement => h('div', { class: 'field-row' }, h('span', { class: 'field-label' }, label), control);
@@ -136,7 +133,10 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
   // The time of day belongs to every scene, so it sits behind a clock button in the header, not among the scene's settings.
   const time = createPopover(createTimeField(), 'Time of day', true);
   const timeButton = h('button', { class: 'icon-btn', title: 'Time of day', 'aria-label': 'Time of day', onclick: () => time.toggle(timeButton) }, icon(ICONS.clock));
-  return { id: 'scenery', title: 'Scenery', icon: ICONS.scenery, body, endAction: timeButton };
+  // Fonts are just as universal: the clock and the content each get their own font and size.
+  const fonts = createPopover(createFontsField(), 'Fonts', true);
+  const fontsButton = h('button', { class: 'icon-btn', title: 'Fonts', 'aria-label': 'Fonts', onclick: () => fonts.toggle(fontsButton) }, icon(ICONS.fonts));
+  return { id: 'scenery', title: 'Scenery', icon: ICONS.scenery, body, endAction: h('span', { class: 'panel-actions' }, fontsButton, timeButton) };
 }
 
 /** Lets pictures be dropped anywhere on the screen, with a quiet frame showing where they will go. */

@@ -8,7 +8,7 @@
   margin: 0 0 14px;
   padding-left: 18px;
   color: var(--muted);
-  font-size: 19px;
+  font-size: calc(19px * var(--content-scale, 1));
   line-height: 1.6;
 }
 
@@ -24,7 +24,7 @@
   padding: 1px 5px;
   background: rgba(0, 0, 0, 0.3);
   color: var(--text);
-  font-size: 18px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
 .music-actions {
@@ -52,7 +52,7 @@
 .list-title {
   margin: 0;
   overflow: hidden;
-  font-size: 20px;
+  font-size: calc(20px * var(--content-scale, 1));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -104,12 +104,12 @@
 }
 
 .row-title {
-  font-size: 20px;
+  font-size: calc(20px * var(--content-scale, 1));
 }
 
 .row-sub {
   color: var(--faint);
-  font-size: 17px;
+  font-size: calc(17px * var(--content-scale, 1));
 }
 
 .music-footer {
@@ -165,13 +165,13 @@ body[data-scene="aquarium"] .music-widget {
 }
 
 .mw-title {
-  font-size: 20px;
+  font-size: calc(20px * var(--content-scale, 1));
 }
 
 .mw-channel {
   margin-top: 1px;
   color: var(--muted);
-  font-size: 18px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
 .mw-volume-icon {
