@@ -1,0 +1,9 @@
+node_modules/
+dist/
+
+# Cloud test runner (modal-tests skill): the box config is shared, its local timings and logs are not
+.modal-test/*
+!.modal-test/config.toml
+
+# Browser automation snapshots
+.playwright-mcp/

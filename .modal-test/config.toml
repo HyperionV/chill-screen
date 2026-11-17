@@ -1,0 +1,42 @@
+# How this module is tested in a cloud box (modal-tests skill). Every key: ~/.claude/skills/modal-tests/references/config.md.
+
+name = "chillscreen"
+
+[box]
+image = "node:22-slim"                 # matches the local Node 22 toolchain
+python = "3.11"                        # node images have no Python; Modal's builder needs it
+packages = []
+path = []
+hosts = []
+
+[box.env]
+
+[box.install]
+files = ["package.json", "package-lock.json"]
+# Install into /deps so the image is rebuilt only when the lockfile changes; linux-native builds of
+# TypeScript 7 and Vite's bundler come from the lockfile's optional dependencies.
+commands = ["cd /deps && npm ci --no-audit --no-fund"]
+
+[box.copy]
+
+[box.links]
+node_modules = "/deps/node_modules"
+
+[env]
+
+[sync]
+include = []
+
+[test]
+runner = "vitest"
+command = ["node", "node_modules/vitest/vitest.mjs", "run"]
+args = []
+whole_suite_args = []
+tests_dir = "tests"
+boxes = 1
+lanes_per_box = 1
+solo = []
+[test.lane_env]
+
+[checks]
+typecheck = ["node", "node_modules/typescript/bin/tsc", "--noEmit", "--pretty", "false", "-p", "."]
