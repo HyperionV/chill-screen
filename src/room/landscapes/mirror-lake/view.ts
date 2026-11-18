@@ -3,19 +3,27 @@ import { memoryCanvas } from '../../../render/pixel-stage';
 import { hourNow } from '../../../scene/clock';
 import type { Look } from '../../../wallpapers/look';
 import { ChapterTitle } from '../../journeys/chapter-title';
-import { hash } from '../../journeys/noise';
+import { hash, ramp } from '../../journeys/noise';
 import { Route } from '../../journeys/route';
 import type { NightSky } from '../../night-sky';
 import { SkyDome, smooth, type SkyState } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
 import { LakeCreatures } from './creatures';
+import { LakeLighting } from './lighting';
 import { LakeScenery } from './scenery';
-import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, SCENE_SECONDS, WATERLINE } from './scenes';
+import { CANOE_LAMP_X, canoeX, canoeY, CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, SCENE_SECONDS, WATERLINE } from './scenes';
+import { LakeShore } from './shore';
 import { buildSprites, type Sprites } from './sprites';
+import { LakeTerrain } from './terrain';
 import { LakeWater } from './water';
 
 const PARALLAX_EASING = 2.8;
 const GALAXY_STARS = 230;
+const SKY_PARALLAX = 0.3;
+const MOON_RADIUS = 6;
+const MOON_COLUMN_START = 0.59;
+const LANTERN_COLUMN_END = 0.92;
+const CANOE_REFLECTION_DEPTH = 31;
 
 export class MirrorLake implements OutsideView {
   private w = 0;
@@ -29,11 +37,15 @@ export class MirrorLake implements OutsideView {
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly sky = memoryCanvas(1, 1);
+  private readonly galaxy = memoryCanvas(1, 1);
   private readonly upper = memoryCanvas(1, 1);
   private readonly layer = memoryCanvas(1, 1);
   private readonly sceneA = memoryCanvas(1, 1);
   private readonly sceneB = memoryCanvas(1, 1);
   private readonly scenery = new LakeScenery();
+  private readonly terrain = new LakeTerrain();
+  private readonly shore = new LakeShore();
+  private readonly lighting = new LakeLighting();
   private readonly creatures = new LakeCreatures();
   private readonly water = new LakeWater();
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [100, 132, 140] };
@@ -56,10 +68,14 @@ export class MirrorLake implements OutsideView {
       surface.canvas.height = this.h;
       surface.ctx.imageSmoothingEnabled = false;
     }
-    this.sprites = buildSprites();
+    this.sprites ??= buildSprites();
+    this.paintGalaxy();
+    this.terrain.resize(this.w, this.h);
+    this.shore.resize(this.w, this.h);
+    this.lighting.resize(this.w, this.h);
     this.scenery.resize(this.w, this.h);
     this.creatures.resize(this.w, this.h);
-    this.water.reset();
+    this.water.resize(this.w, this.h, this.unit);
     this.activeScene = this.route.now.index;
   }
 
@@ -111,32 +127,66 @@ export class MirrorLake implements OutsideView {
     const sprites = this.sprites;
     if (!sprites) return;
     const horizon = Math.round(this.h * WATERLINE);
+    const skyX = Math.round(this.px * SKY_PARALLAX);
+    const skyY = Math.round(this.py * SKY_PARALLAX);
+    const moonX = Math.round(this.w * state.moon.u) + skyX;
+    const moonY = Math.round(this.h * state.moon.v) + skyY;
+    const lampX = this.lighting.lampX(scene, this.px);
+    const lampPower = this.lighting.lampPower(state, frame.time);
     const upper = this.upper.ctx;
     upper.fillStyle = css(state.sky.zenith);
     upper.fillRect(0, 0, this.w, this.h);
-    upper.drawImage(this.sky.canvas, Math.round(this.px * 0.3), Math.round(this.py * 0.3));
-    if (scene === 4) this.galaxy(upper, state);
+    upper.drawImage(this.sky.canvas, skyX, skyY);
+    if (scene === 4 && state.day < 0.9) {
+      upper.globalAlpha = 1 - state.day;
+      upper.drawImage(this.galaxy.canvas, skyX, skyY);
+      upper.globalAlpha = 1;
+    }
+    this.lighting.moon(upper, moonX, moonY, state);
+    this.terrain.draw(upper, scene, state.day, this.px, this.py);
     const land = this.layer.ctx;
     land.clearRect(0, 0, this.w, this.h);
-    this.scenery.upper(land, scene, state, frame.time, this.px, this.py, sprites);
+    this.scenery.upper(land, scene, state, frame.time, this.px, sprites);
     this.creatures.eagle(land, scene, this.px);
     this.tint(land, state);
     upper.drawImage(this.layer.canvas, 0, 0);
+    this.lighting.farShore(upper, lampX, lampPower, state.day);
+    this.lighting.owlFlight(upper, scene, state, frame.time, this.px);
     ctx.drawImage(this.upper.canvas, 0, 0);
+
     this.water.reflect(ctx, this.upper.canvas, horizon, this.unit, frame.time, state);
+    this.water.surface(ctx, this.w, this.h, horizon, this.unit, frame.time, state);
+    this.lightOnWater(ctx, scene, state, frame.time, moonX, moonY, lampX, lampPower, horizon);
+    this.lighting.lakeMist(ctx, scene, state, frame.time);
+    this.shore.draw(ctx, scene, state, frame.time, this.px);
+    this.shore.buds(ctx, scene, this.lighting, state, frame.time, this.px);
     land.clearRect(0, 0, this.w, this.h);
     this.scenery.foreground(land, scene, state, frame.time, this.px, sprites);
     this.creatures.draw(land, scene, this.px, sprites, state.day);
     this.tint(land, state);
     ctx.drawImage(this.layer.canvas, 0, 0);
     this.water.draw(ctx, this.unit, state);
-    this.scenery.atmosphere(ctx, scene, state, frame.time);
+    this.lighting.foreground(ctx, scene, state, frame.time, this.px);
+  }
+
+  private lightOnWater(ctx: CanvasRenderingContext2D, scene: number, state: SkyState, time: number, moonX: number, moonY: number, lampX: number, lampPower: number, horizon: number): void {
+    const moonTop = Math.max(horizon + 1, Math.round(this.h * MOON_COLUMN_START));
+    // A moon behind a ridge can light the haze before its disc reaches the water.
+    const clearance = (this.terrain.ridgeAt(scene, moonX, this.px) - moonY) / this.unit;
+    const moonPower = state.moon.up > 0 ? (1 - state.day) * ramp(-MOON_RADIUS, MOON_RADIUS, clearance) : 0;
+    this.water.shimmer(ctx, 'moon', moonX, moonTop, this.h - moonTop, this.unit, time, moonPower * 0.79);
+    this.water.shimmer(ctx, 'lamp', lampX, horizon + 1, this.h * LANTERN_COLUMN_END - horizon, this.unit, time, lampPower * 0.86);
+    if (scene === 4) {
+      const x = canoeX(this.w, this.unit, time, this.px) + CANOE_LAMP_X * this.unit;
+      const y = canoeY(this.h, this.unit, time) + this.unit;
+      this.water.shimmer(ctx, 'canoe', x, y, this.unit * CANOE_REFLECTION_DEPTH, this.unit, time, this.lighting.canoePower(state, time) * 0.65);
+    }
   }
 
   private tint(ctx: CanvasRenderingContext2D, state: SkyState): void {
     ctx.save();
     ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillStyle = css([12, 27, 48], (1 - state.day) * 0.46);
+    ctx.fillStyle = css([25, 43, 62], (1 - state.day) * 0.38);
     ctx.fillRect(0, 0, this.w, this.h);
     const sunset = Math.max(0, 1 - state.sun.up / 0.5) * state.day;
     ctx.fillStyle = css(state.sky.light, sunset * 0.12);
@@ -144,15 +194,16 @@ export class MirrorLake implements OutsideView {
     ctx.restore();
   }
 
-  private galaxy(ctx: CanvasRenderingContext2D, state: SkyState): void {
-    const night = 1 - state.day;
-    if (night < 0.1) return;
+  private paintGalaxy(): void {
+    const { canvas, ctx } = this.galaxy;
+    canvas.width = this.w;
+    canvas.height = Math.max(1, Math.ceil(this.h * 0.34));
     // A sparse diagonal dust lane made of hard pixels, reflected with the rest of the sky.
     for (let i = 0; i < GALAXY_STARS; i++) {
       const t = hash(i * 13 + 4);
-      const x = this.w * (0.23 + t * 0.48) + (hash(i + 71) - 0.5) * 30 * this.unit + this.px * 0.3;
+      const x = this.w * (0.23 + t * 0.48) + (hash(i + 71) - 0.5) * 30 * this.unit;
       const y = this.h * (0.29 - t * 0.27) + (hash(i + 37) - 0.5) * 18 * this.unit;
-      ctx.fillStyle = css(i % 4 ? [158, 181, 192] : [225, 222, 197], night * (i % 4 ? 0.23 : 0.65));
+      ctx.fillStyle = i % 4 ? 'rgba(158,181,192,0.23)' : 'rgba(225,222,197,0.65)';
       ctx.fillRect(Math.round(x), Math.round(y), 1, 1);
     }
   }

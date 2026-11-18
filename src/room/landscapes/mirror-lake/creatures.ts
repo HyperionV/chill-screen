@@ -61,6 +61,10 @@ export class LakeCreatures {
     this.add('frog', 2, 0.29, 0.88, 1.25);
     this.add('turtle', 2, 0.81, 0.82, 1.4);
     for (let i = 0; i < 3; i++) this.add('dragonfly', 2, 0.14 + i * 0.34, 0.68 + i % 2 * 0.04, 1);
+    this.add('dragonfly', 0, 0.26, 0.76, 1);
+    this.add('dragonfly', 1, 0.19, 0.77, 1);
+    this.add('dragonfly', 3, 0.16, 0.75, 1);
+    this.add('dragonfly', 4, 0.28, 0.76, 1);
   }
 
   private add(kind: Kind, scene: number, x: number, y: number, size: number): void {
@@ -165,6 +169,7 @@ export class LakeCreatures {
       if (a.kind === 'dragonfly') {
         x += Math.sin(this.time * 1.1 + a.phase) * 3 * u;
         y += Math.cos(this.time * 1.5 + a.phase) * 2 * u;
+        ctx.globalAlpha = 0.62 + day * 0.38;
         ctx.fillStyle = '#adc9be';
         const wing = Math.floor(this.time * 6 + a.phase) % 2 ? 2 : 0;
         ctx.fillRect(Math.round(x - 7 * u), Math.round(y - (2 + wing) * u), Math.round(6 * u), Math.max(1, Math.round(2 * u)));
@@ -173,6 +178,7 @@ export class LakeCreatures {
         ctx.fillRect(Math.round(x), Math.round(y - 4 * u), Math.max(1, Math.round(2 * u)), Math.round(10 * u));
         ctx.fillStyle = '#e5dcae';
         ctx.fillRect(Math.round(x), Math.round(y - 5 * u), 2, 2);
+        ctx.globalAlpha = 1;
         continue;
       }
       if (a.kind === 'frog' && a.activity === 'react') y -= Math.sin(Math.PI * Math.min(1, a.age / LEAP_SECONDS)) * 20 * u;

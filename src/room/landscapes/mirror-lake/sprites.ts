@@ -11,6 +11,7 @@ export interface Sprites {
   turtle: HTMLCanvasElement;
   pine: HTMLCanvasElement;
   canoe: HTMLCanvasElement;
+  lilyPad: HTMLCanvasElement;
   reflections: Record<'swan' | 'sleeping' | 'duck' | 'cygnet' | 'canoe', HTMLCanvasElement>;
 }
 
@@ -32,6 +33,10 @@ export function buildSprites(): Sprites {
   }
   const art = {
     pine: pine.canvas,
+    lilyPad: pixmap([
+      '.....hhhhhh.....', '..hhhmhhmhhhm...', '.hhmmmmmmmmssm..',
+      'hmmmmdmsss......', '.smmddmmmsssdd..', '..ssssmmssssdd..', '....ddddddd.....',
+    ], { h: '#a2ad72', m: '#738f5e', s: '#4c7655', d: '#37594c' }),
     swan: pixmap([
       '..................wwww...', '.................wwwwwb..', '.................wwewwbb.',
       '.................wwss....', '.................wws.....', '.................wws.....',
@@ -91,9 +96,13 @@ function reflection(source: HTMLCanvasElement): HTMLCanvasElement {
 export function sprite(ctx: CanvasRenderingContext2D, image: HTMLCanvasElement, x: number, y: number, size: number, flip = false): void {
   const w = Math.max(1, Math.round(image.width * size));
   const h = Math.max(1, Math.round(image.height * size));
+  if (!flip) {
+    ctx.drawImage(image, Math.round(x) - Math.round(w / 2), Math.round(y) - h, w, h);
+    return;
+  }
   ctx.save();
   ctx.translate(Math.round(x), Math.round(y));
-  ctx.scale(flip ? -1 : 1, 1);
+  ctx.scale(-1, 1);
   ctx.drawImage(image, -Math.round(w / 2), -h, w, h);
   ctx.restore();
 }
