@@ -1,6 +1,6 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash, noise } from '../../journeys/noise';
-import { DESIGN_HEIGHT, SCENES, waterSpan, type Scene } from './scenes';
+import { DESIGN_HEIGHT, GROUND_ROW, SCENES, STONE_WINDOW_RISE, stoneX, waterSpan, type Scene } from './scenes';
 import { BARK, CREAM, INK, RED, ROOF, STONE, oval, rect, sprite, type Sprites } from './sprites';
 
 export interface Scenery {
@@ -15,7 +15,15 @@ const GRASS = ['#879b78', '#93a37b', '#a4ad87', '#748c70'];
 const MOSS = ['#536f5c', '#657e61', '#a9b28b'];
 const PATH = ['#c6b9a3', '#d8c8af', '#b5ad97'];
 const PETALS = ['#e7afc2', '#f6cdd7', '#d99ab3'];
-const GROUND_ROW = 164;
+const DRIFT_PALETTE = ['#ba869f', '#d09bb1', '#e3adc1', '#efd0d7'];
+const DRIFT_DENSITY = 52;
+const DRIFT_ANCHORS = [
+  [{ u: 0.12, y: 228 }, { u: 0.34, y: 243 }, { u: 0.70, y: 218 }, { u: 0.85, y: 254 }],
+  [{ u: 0.125, y: 242 }, { u: 0.24, y: 251 }, { u: 0.77, y: 230 }, { u: 0.92, y: 217 }],
+  [{ u: 0.13, y: 245 }, { u: 0.31, y: 221 }, { u: 0.67, y: 239 }, { u: 0.91, y: 250 }],
+  [{ u: 0.065, y: 232 }, { u: 0.32, y: 247 }, { u: 0.75, y: 237 }, { u: 0.90, y: 253 }],
+  [{ u: 0.17, y: 221 }, { u: 0.30, y: 240 }, { u: 0.65, y: 208 }, { u: 0.82, y: 252 }],
+];
 const WHEEL_U = 0.21;
 const WHEEL_ROW = 216;
 
@@ -54,7 +62,7 @@ function grove(ctx: CanvasRenderingContext2D, width: number, index: number, asse
   for (let i = 0; i < count; i++) {
     const x = i * 23 - 10;
     const y = 166 + noise(i * 0.7 + index) * 9;
-    sprite(ctx, assets.trees[i % assets.trees.length], x, y, 0.3 + hash(i + 9) * 0.16);
+    sprite(ctx, assets.trees[i % assets.trees.length].image, x, y, 0.3 + hash(i + 9) * 0.16);
   }
   // Horizontal bands of haze soften the grove behind the clock.
   for (let y = 148; y < 170; y += 3) {
@@ -62,13 +70,44 @@ function grove(ctx: CanvasRenderingContext2D, width: number, index: number, asse
   }
 }
 
+function pathCenter(width: number, depth: number, index: number): number {
+  return width * (0.5 - 0.07 * Math.sin(depth * 4 + index));
+}
+
+function pathHalfWidth(depth: number): number {
+  return 5 + depth * depth * 41;
+}
+
+function petalDrifts(ctx: CanvasRenderingContext2D, width: number, scene: Scene, index: number): void {
+  for (const anchor of DRIFT_ANCHORS[index]) {
+    const seed = anchor.y + index * 215;
+    const spread = Math.min(30, width * 0.07);
+    for (let i = 0; i < DRIFT_DENSITY; i++) {
+      const angle = hash(seed + i) * Math.PI * 2;
+      const distance = hash(seed + i * 7 + 209);
+      const x = Math.round(anchor.u * width + Math.cos(angle) * distance * spread);
+      const y = Math.round(anchor.y + Math.sin(angle) * distance * 8 + (x - anchor.u * width) * 0.12);
+      const bank = waterSpan(scene, y, width);
+      if (bank && x >= bank[0] - 2 && x <= bank[1] + 2) continue;
+      const shade = Math.floor(hash(seed + i * 17 + 8) * DRIFT_PALETTE.length);
+      rect(ctx, DRIFT_PALETTE[shade], x, y, shade % 2 === 0 ? 2 : 1, 1);
+      if (i % 9 === 0) rect(ctx, DRIFT_PALETTE[3], x + 1, y - 1, 1, 1);
+    }
+  }
+}
+
 function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, index: number): void {
+  const hasPath = scene.water !== 'pond';
   for (let y = GROUND_ROW; y < DESIGN_HEIGHT; y++) {
     rect(ctx, GRASS[Math.floor((y - GROUND_ROW) / 29) % GRASS.length], 0, y, width, 1);
     const t = (y - GROUND_ROW) / (DESIGN_HEIGHT - GROUND_ROW);
-    const pathX = width * (0.5 - 0.07 * Math.sin(t * 4 + index));
-    const pathHalf = 5 + t * t * 41;
-    if (!scene.water || index === 3) rect(ctx, PATH[0], pathX - pathHalf, y, pathHalf * 2, 1);
+    const pathX = pathCenter(width, t, index);
+    const pathHalf = pathHalfWidth(t);
+    if (hasPath) {
+      rect(ctx, PATH[0], pathX - pathHalf, y, pathHalf * 2, 1);
+      if (y % 4 < 3) rect(ctx, PATH[2], pathX - pathHalf, y, 2 + t * 2, 1);
+      if (y % 6 < 3) rect(ctx, PATH[1], pathX + pathHalf - 5, y, 3 + t * 2, 1);
+    }
     const span = waterSpan(scene, y, width);
     if (span) {
       rect(ctx, '#677d75', span[0] - 5, y, span[1] - span[0] + 10, 1);
@@ -83,8 +122,8 @@ function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, inde
     const span = waterSpan(scene, y, width);
     if (span && x > span[0] - 3 && x < span[1] + 3) continue;
     const t = (y - GROUND_ROW) / (DESIGN_HEIGHT - GROUND_ROW);
-    const onPath = Math.abs(x - width * (0.5 - 0.07 * Math.sin(t * 4 + index))) < 5 + t * t * 41;
-    if (i % 3 === 0) rect(ctx, PETALS[i % PETALS.length], x, y, 2, 1);
+    const onPath = hasPath && Math.abs(x - pathCenter(width, t, index)) < pathHalfWidth(t);
+    if (i % 5 === 0) rect(ctx, PETALS[i % PETALS.length], x, y, 2, 1);
     else if (onPath) rect(ctx, PATH[i % PATH.length], x, y, 2, 1);
     else {
       rect(ctx, GRASS[i % GRASS.length], x, y, 2, 1);
@@ -99,8 +138,10 @@ function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, inde
     const y = 182 + hash(i + 85) * 74;
     const span = waterSpan(scene, y, width);
     if (span && x > span[0] - 8 && x < span[1] + 8) continue;
-    oval(ctx, '#747d72', x, y, 4 + hash(i) * 4, 3);
-    rect(ctx, '#b7b5a1', x - 3, y - 2, 5, 1);
+    const radius = 4 + hash(i) * 4;
+    oval(ctx, '#6b806d', x + 2, y + 2, radius + 2, 2);
+    oval(ctx, '#747d72', x, y, radius, 3);
+    rect(ctx, '#b7b5a1', x - radius + 2, y - 2, radius, 1);
     rect(ctx, MOSS[1], x + 1, y, 5, 2);
   }
   if (index === 2) {
@@ -121,6 +162,7 @@ function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, inde
       rect(ctx, '#c0bca4', x - 14, y, 28, 1);
     }
   }
+  petalDrifts(ctx, width, scene, index);
 }
 
 function stoneLantern(ctx: CanvasRenderingContext2D, x: number, y: number): void {
@@ -129,7 +171,7 @@ function stoneLantern(ctx: CanvasRenderingContext2D, x: number, y: number): void
   rect(ctx, '#8b9388', x - 3, y - 27, 6, 23);
   rect(ctx, '#c6c4ac', x - 3, y - 27, 2, 20);
   rect(ctx, STONE, x - 9, y - 38, 18, 13);
-  rect(ctx, '#59675f', x - 5, y - 35, 10, 7);
+  rect(ctx, '#59675f', x - 5, y - STONE_WINDOW_RISE - 3, 10, 7);
   rect(ctx, '#cdc8b1', x - 11, y - 40, 22, 3);
   for (let row = 0; row < 7; row++) rect(ctx, row % 2 ? '#899183' : STONE, x - 12 + row, y - 41 - row, 24 - row * 2, 1);
   rect(ctx, '#bdbda8', x - 2, y - 51, 4, 4);
@@ -202,12 +244,14 @@ function pagoda(ctx: CanvasRenderingContext2D, x: number, y: number): void {
 }
 
 function picnic(ctx: CanvasRenderingContext2D, x: number): void {
+  rect(ctx, '#7f896f', x - 38, 236, 80, 3);
   rect(ctx, '#d8959b', x - 39, 215, 78, 22);
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 10; col++) {
       if ((row + col) % 2 === 0) rect(ctx, '#f0c1bb', x - 39 + col * 8, 215 + row * 5, 7, 4);
     }
   }
+  for (let hem = -38; hem < 39; hem += 4) rect(ctx, '#e8b3ab', x + hem, 237, 2, 1);
   rect(ctx, '#725346', x + 4, 224, 20, 11);
   rect(ctx, '#edd7b4', x + 6, 225, 16, 8);
   rect(ctx, '#9b685a', x + 14, 225, 1, 8);
@@ -264,15 +308,21 @@ export function buildScenery(width: number, assets: Sprites): Scenery[] {
       if (index === 3) streamProps(ctx, width, assets);
       if (index === 4) {
         // A low tea bench and cups give the lantern clearing a human scale.
-        rect(ctx, BARK, width * 0.25 - 27, 218, 54, 5);
-        rect(ctx, '#ac8270', width * 0.25 - 27, 218, 54, 1);
-        rect(ctx, INK, width * 0.25 - 23, 223, 4, 13);
-        rect(ctx, INK, width * 0.25 + 19, 223, 4, 13);
-        rect(ctx, CREAM, width * 0.25 - 7, 214, 5, 4);
-        rect(ctx, '#c6c9ad', width * 0.25 + 7, 214, 5, 4);
+        const x = width * 0.25;
+        oval(ctx, '#677862', x + 3, 236, 30, 3);
+        rect(ctx, INK, x - 23, 223, 4, 13);
+        rect(ctx, INK, x + 19, 223, 4, 13);
+        rect(ctx, '#967060', x - 21, 227, 42, 2);
+        rect(ctx, BARK, x - 27, 218, 54, 5);
+        rect(ctx, '#ac8270', x - 27, 218, 54, 1);
+        rect(ctx, '#d9a58d', x - 25, 219, 18, 1);
+        rect(ctx, CREAM, x - 7, 214, 5, 4);
+        rect(ctx, '#c6c9ad', x + 7, 214, 5, 4);
+        rect(ctx, '#a77268', x + 16, 210, 7, 8);
+        rect(ctx, '#dba081', x + 17, 210, 4, 1);
       }
       if (scene.bridge) bridge(ctx, scene.bridge.x * width, scene.bridge.y);
-      stoneLantern(ctx, width * (index === 1 ? 0.16 : 0.86), index === 1 ? 243 : 252);
+      for (const stone of scene.stones) stoneLantern(ctx, stoneX(scene, stone, width), stone.y);
     }),
     foreground: picture(width, (ctx) => {
       for (let i = 0; i < width; i += 4) {

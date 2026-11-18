@@ -1,6 +1,8 @@
 import type { Chapter } from '../../journeys/route';
 
 export const DESIGN_HEIGHT = 270;
+export const GROUND_ROW = 164;
+export const GROUND_DEPTH = 0.75; // The ground, its props, and their click targets move together.
 export const SCENE_SECONDS = 210;
 export const DISSOLVE_SECONDS = 10;
 export const CHAPTERS: readonly Chapter[] = [
@@ -14,10 +16,12 @@ export const CHAPTERS: readonly Chapter[] = [
 export interface Point { x: number; y: number }
 export interface Tree { u: number; y: number; size: number; variant: number }
 export interface Lantern { u: number; y: number }
+export interface StoneLantern { u: number | 'stream-bank'; y: number }
 export interface Scene {
   cat: Point;
   trees: readonly Tree[];
   lanterns: readonly Lantern[];
+  stones: readonly StoneLantern[];
   bridge: Point | null;
   water: 'pond' | 'stream' | null;
 }
@@ -33,6 +37,7 @@ export const SCENES: readonly Scene[] = [
       { u: 0.78, y: 181, size: 0.65, variant: 0 },
     ],
     lanterns: [{ u: 0.12, y: 146 }, { u: 0.88, y: 137 }],
+    stones: [{ u: 0.86, y: 252 }],
   },
   {
     cat: { x: 0.755, y: 201 }, water: 'pond', bridge: { x: 0.77, y: 207 },
@@ -42,6 +47,7 @@ export const SCENES: readonly Scene[] = [
       { u: 0.47, y: 177, size: 0.55, variant: 0 },
     ],
     lanterns: [{ u: 0.12, y: 153 }, { u: 0.91, y: 155 }],
+    stones: [{ u: 0.16, y: 243 }],
   },
   {
     cat: { x: 0.745, y: 203 }, water: null, bridge: null,
@@ -51,6 +57,7 @@ export const SCENES: readonly Scene[] = [
       { u: 0.97, y: 234, size: 1.3, variant: 1 },
     ],
     lanterns: [{ u: 0.66, y: 165 }, { u: 0.86, y: 165 }],
+    stones: [{ u: 0.86, y: 252 }],
   },
   {
     cat: { x: 0.35, y: 230 }, water: 'stream', bridge: { x: 0.34, y: 186 },
@@ -60,6 +67,7 @@ export const SCENES: readonly Scene[] = [
       { u: 0.35, y: 181, size: 0.65, variant: 2 },
     ],
     lanterns: [{ u: 0.16, y: 145 }, { u: 0.9, y: 143 }],
+    stones: [{ u: 0.86, y: 252 }, { u: 'stream-bank', y: 255 }],
   },
   {
     cat: { x: 0.745, y: 229 }, water: null, bridge: null,
@@ -73,8 +81,18 @@ export const SCENES: readonly Scene[] = [
       { u: 0.13, y: 153 }, { u: 0.27, y: 170 }, { u: 0.39, y: 180 },
       { u: 0.64, y: 180 }, { u: 0.75, y: 172 }, { u: 0.88, y: 150 },
     ],
+    stones: [{ u: 0.86, y: 252 }],
   },
 ];
+
+export const STONE_WINDOW_RISE = 32;
+const STONE_BANK_CLEARANCE = 16;
+
+export function stoneX(scene: Scene, stone: StoneLantern, width: number): number {
+  if (stone.u !== 'stream-bank') return Math.round(stone.u * width);
+  const bank = waterSpan(scene, stone.y, width);
+  return Math.round((bank?.[1] ?? width * 0.25) + STONE_BANK_CLEARANCE);
+}
 
 export function waterSpan(scene: Scene, y: number, width: number): [number, number] | null {
   if (scene.water === 'pond') {
