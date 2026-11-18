@@ -2,6 +2,10 @@ import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash } from '../../journeys/noise';
 import { pixmap } from '../../journeys/pixmap';
 
+const CROWN_HEIGHT = 0.83;
+const BRANCH_TIERS = 9;
+const TRUNK_STRIATIONS = 4;
+
 export type Kind = 'fawn' | 'deer' | 'fox' | 'rabbit' | 'frog' | 'owl' | 'kingfisher' | 'squirrel';
 export type Pose = 'rest' | 'alert' | 'walk' | 'sleep' | 'fly' | 'drink';
 export type CastSprites = Record<Kind, Record<Pose, HTMLCanvasElement>>;
@@ -61,15 +65,28 @@ function animal(kind: Kind, pose: Pose): HTMLCanvasElement {
     rect(dark, 14, 21, 1, 1); rect(dark, 23, 21, 1, 1); rect('#c1c58a', 15, 27, 9, 2);
     rect('#4e7449', stepping ? 5 : 8, 30, 8, 3); rect('#4e7449', 24, 30, stepping ? 9 : 6, 3);
   } else if (kind === 'owl') {
-    rect('#675d4a', 11, 15, 15, 16); rect('#a69c7b', 13, 17, 11, 13);
-    rect('#776c54', 10, 10, 17, 11);
-    rect('#cfc3a1', raised ? 15 : 12, 12, 5, 6); rect('#cfc3a1', 21, 12, 5, 6);
-    rect('#e4c575', raised ? 18 : 14, 14, 2, sleeping ? 1 : 2);
-    rect('#e4c575', 23, 14, 2, sleeping ? 1 : 2);
-    rect(dark, raised ? 19 : 15, 14, 1, 1); rect(dark, 24, 14, 1, 1);
-    rect('#bd9250', 19, 18, 2, 3);
-    for (let i = 0; i < 6; i++) rect('#695e49', 15 + (i % 3) * 3, 23 + Math.floor(i / 3) * 3, 1, 2);
-    rect('#c29558', 14, 31, 3, 2); rect('#c29558', 22, 31, 3, 2);
+    const eyes = raised ? 1 : 0;
+    rect('#534e43', 11, 16, 15, 15);
+    rect('#817461', 11, 16, 2, 13);
+    rect('#bcb294', 14, 18, 10, 12);
+    rect('#e4d3ab', 14, 19, 7, 7);
+    rect('#a9987b', 15, 29, 8, 2);
+    rect('#786a55', 10, 11, 17, 9);
+    rect('#9c8d70', 11, 9, 2, 4); rect('#9c8d70', 24, 9, 2, 4);
+    rect('#b7ac91', 13, 10, 11, 2);
+    rect('#ead9b6', 11 + eyes, 12, 7, 6); rect('#ddc9a4', 20 + eyes, 12, 6, 6);
+    rect('#bc8763', 12 + eyes, 13, 5, 4); rect('#bc8763', 20 + eyes, 13, 5, 4);
+    if (sleeping) {
+      rect(dark, 13 + eyes, 15, 3, 1); rect(dark, 21 + eyes, 15, 3, 1);
+    } else {
+      rect('#ffc570', 13 + eyes, 13, 4, 4); rect('#ffc570', 21 + eyes, 13, 4, 4);
+      rect(dark, 14 + eyes, 14, 2, 2); rect(dark, 22 + eyes, 14, 2, 2);
+      rect('#fff2c2', 14 + eyes, 14, 1, 1); rect('#fff2c2', 22 + eyes, 14, 1, 1);
+    }
+    rect('#8e633e', 18 + eyes, 17, 2, 3);
+    rect('#e5b46a', 18 + eyes, 17, 1, 2);
+    for (let i = 0; i < 6; i++) rect('#94846b', 15 + (i % 3) * 3, 23 + Math.floor(i / 3) * 3, 1, 2);
+    rect('#c29a68', 14, 31, 3, 2); rect('#c29a68', 22, 31, 3, 2);
     if (pose === 'fly') {
       rect('#675d4a', 0, 12, 12, 5); rect('#a69c7b', 1, 16, 10, 2);
       rect('#675d4a', 25, 12, 11, 5); rect('#a69c7b', 26, 16, 9, 2);
@@ -99,32 +116,55 @@ export function buildCast(): CastSprites {
     frog: make('frog'), owl: make('owl'), kingfisher: make('kingfisher'), squirrel: make('squirrel') };
 }
 
-export function pineSprite(height: number, width: number, haze: number): HTMLCanvasElement {
+type PinePalette = 'distant' | 'middle' | 'near' | 'moonlit';
+
+const PINE_COLORS = {
+  distant: { needles: ['#7e9e99', '#72948f', '#6b8e8b', '#638486'], rim: '#92ada6', bark: '#586f66', grain: '#6e877c' },
+  middle: { needles: ['#5d8a78', '#4f7d70', '#426d64', '#365f58'], rim: '#739b85', bark: '#52695e', grain: '#798979' },
+  near: { needles: ['#56866b', '#46745e', '#386351', '#305548'], rim: '#7b9d7a', bark: '#645441', grain: '#938067' },
+  moonlit: { needles: ['#68938a', '#517f75', '#426f65', '#355e57'], rim: '#9fbeb0', bark: '#576958', grain: '#8aaba0' },
+};
+
+export function pineSprite(height: number, width: number, palette: PinePalette): HTMLCanvasElement {
   const { canvas, ctx: c } = memoryCanvas(width, height);
-  const tones = haze > 0.5 ? ['#789f9c', '#719594', '#658b8b', '#5d8385']
-    : haze > 0 ? ['#4a7b70', '#396a61', '#315c57', '#2d5251']
-      : ['#426e53', '#305b48', '#244b3f', '#1c3d37'];
+  const colors = PINE_COLORS[palette];
   const mid = Math.floor(width / 2);
-  c.fillStyle = haze > 0 ? '#526c65' : '#624f3b'; c.fillRect(mid - 3, 10, 7, height - 10);
-  c.fillStyle = haze > 0 ? '#668078' : '#8b7953'; c.fillRect(mid - 3, 40, 1, height - 40);
-  const crown = height * 0.83;
+  const crown = height * CROWN_HEIGHT;
+  c.fillStyle = colors.bark;
+  c.fillRect(mid - 3, 10, 7, height - 10);
+  c.fillRect(mid - 5, height - 5, 12, 4);
+  c.fillStyle = colors.grain;
+  for (let i = 0; i < TRUNK_STRIATIONS; i++) {
+    const y = Math.round(crown - 8 + i * (height - crown) / TRUNK_STRIATIONS);
+    c.fillRect(mid - 3 + i % 2, y, 1, 9);
+  }
   for (let y = 0; y < crown; y++) {
     const t = y / crown;
-    const half = Math.floor(width * 0.5 * t * (0.56 + ((t * 9) % 1) * 0.44));
-    for (let x = -half; x <= half; x++) {
-      const shade = Math.min(3, Math.max(0, Math.floor((x / Math.max(1, half) + 1) * 1.6) + (hash(x * 13 + y * 7) < 0.08 ? 1 : 0)));
-      c.fillStyle = tones[shade]; c.fillRect(mid + x, y, 1, 1);
+    const branch = t * BRANCH_TIERS;
+    const tier = branch % 1;
+    const spread = width * 0.48 * t * (0.51 + tier * 0.49);
+    const jagged = hash(y * 13 + Math.floor(branch) * 17);
+    const left = Math.floor(spread * (0.91 + jagged * 0.11));
+    const right = Math.floor(spread * (0.87 + hash(y * 7) * 0.12));
+    for (let x = -left; x <= right; x++) {
+      const grain = hash(x * 13 + y * 7);
+      const depth = tier > 0.79 || grain < 0.09 ? 1 : 0;
+      const shade = Math.max(0, Math.min(3, Math.floor((x / Math.max(1, spread) + 1) * 1.48) + depth));
+      const needleRim = x < -left + 2 && tier < 0.79 && grain > 0.28;
+      const twig = tier < 0.23 && x < 0 && grain > 0.83;
+      c.fillStyle = needleRim || twig ? colors.rim : colors.needles[shade];
+      c.fillRect(mid + x, y, 1, 1);
     }
   }
   return canvas;
 }
 
-export function fernSprite(): HTMLCanvasElement {
+export function fernSprite(moonlit = false): HTMLCanvasElement {
   return pixmap([
-    '...........l...........', '....l......l......l....', '.....ll....l....ll.....',
+    '...........h...........', '....h......l......h....', '.....ll....h....ll.....',
     '..l...ll..ldl..ll...l..', '...ll..lldldldll..ll...', '....lld.ldldldl.dll....',
     '.ll...lldldldldll...ll.', '..llll..ldldldl..llll..', '.....lllldldldllll.....',
     '........ldldldl........', '.........ldldl.........', '..........ddd..........',
     '...........d...........',
-  ], { l: '#80a35b', d: '#3a6242' });
+  ], moonlit ? { h: '#bdd4a6', l: '#8fb18a', d: '#507e68' } : { h: '#aac381', l: '#80a35b', d: '#486c48' });
 }
