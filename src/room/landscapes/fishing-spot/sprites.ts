@@ -1,17 +1,9 @@
 import { mirrored, pixmap } from '../../journeys/pixmap';
 import { buildBirdSprites, buildFishSprites, buildFloraSprites } from './fauna-sprites';
-import type { FishSpecies } from './types';
+import { buildPropAndStructureSprites } from './props-sprites';
+import type { FishSpecies, SpriteBox, SpritePair } from './types';
 
-export interface SpriteBox {
-  canvas: HTMLCanvasElement;
-  w: number;
-  h: number;
-}
-
-export interface SpritePair {
-  right: SpriteBox;
-  left: SpriteBox;
-}
+export type { SpriteBox, SpritePair } from './types';
 
 export interface FishingSprites {
   anglerCast: SpritePair;
@@ -26,14 +18,33 @@ export interface FishingSprites {
   dogLookB: SpriteBox;
   dogRestA: SpriteBox;
   dogRestB: SpriteBox;
+  catSitA: SpriteBox;
+  catSitB: SpriteBox;
+  catLook: SpriteBox;
+  catNapA: SpriteBox;
+  catNapB: SpriteBox;
   tackleBox: SpriteBox;
   thermos: SpriteBox;
   bucketEmpty: SpriteBox;
   bucketFull: SpriteBox;
   stove: SpriteBox;
   lantern: SpriteBox;
+  rodRack: SpriteBox;
+  netPost: SpriteBox;
+  coiledRope: SpriteBox;
+  crates: SpriteBox;
+  mooringPost: SpriteBox;
   rowboat: SpriteBox;
+  mooredSkiff: SpriteBox;
+  sailingDinghy: SpritePair;
   boathouse: SpriteBox;
+  boathouseGlow: SpriteBox;
+  cabin: SpriteBox;
+  cabinGlow: SpriteBox;
+  haloLantern: SpriteBox;
+  haloEmber: SpriteBox;
+  haloFirefly: SpriteBox;
+  leaves: SpriteBox[];
   heronStill: SpritePair;
   heronStrike: SpritePair;
   heronFlyA: SpritePair;
@@ -45,6 +56,13 @@ export interface FishingSprites {
   gullLook: SpritePair;
   gullFlyA: SpritePair;
   gullFlyB: SpritePair;
+  cormorantStill: SpritePair;
+  cormorantSpread: SpritePair;
+  cormorantFlyA: SpritePair;
+  cormorantFlyB: SpritePair;
+  swallow: SpritePair;
+  swallowFlyA: SpritePair;
+  swallowFlyB: SpritePair;
   duckMotherA: SpritePair;
   duckMotherB: SpritePair;
   duckFlyA: SpritePair;
@@ -52,10 +70,16 @@ export interface FishingSprites {
   duckling: SpritePair;
   caughtFish: Record<FishSpecies, SpriteBox>;
   tallyFish: Record<FishSpecies, SpriteBox>;
+  jumpingFish: SpritePair;
+  dragonflyTealA: SpritePair;
+  dragonflyTealB: SpritePair;
+  dragonflyAmberA: SpritePair;
+  dragonflyAmberB: SpritePair;
   reeds: SpriteBox[];
   lilyPads: SpriteBox[];
   farPines: SpriteBox[];
   midTrees: SpriteBox[];
+  shoreBushes: SpriteBox[];
 }
 
 function box(canvas: HTMLCanvasElement): SpriteBox {
@@ -69,20 +93,20 @@ function pair(rows: readonly string[], palette: Readonly<Record<string, string>>
 
 /** Palette shared across all poses of the recurring angler (khaki hat, olive vest, red scarf). */
 const ANGLER_PAL: Readonly<Record<string, string>> = {
-  h: '#d8be7c', // hat lit
-  H: '#9c7e44', // hat shade / band
-  s: '#eec29c', // skin
-  S: '#c8946e', // skin shadow
-  e: '#281e18', // eye / detail
-  r: '#d64438', // signature red scarf lit
-  R: '#982822', // red scarf shadow
-  c: '#e6dfd0', // cream shirt sleeve
-  v: '#58784c', // olive fishing vest lit
-  V: '#3b5434', // vest shadow
-  p: '#3b4a5e', // trousers lit
-  P: '#263242', // trousers shadow
-  k: '#4a3222', // boots
-  K: '#2e1e14', // boot sole
+  h: '#d8be7c',
+  H: '#9c7e44',
+  s: '#eec29c',
+  S: '#c8946e',
+  e: '#281e18',
+  r: '#d64438',
+  R: '#982822',
+  c: '#e6dfd0',
+  v: '#58784c',
+  V: '#3b5434',
+  p: '#3b4a5e',
+  P: '#263242',
+  k: '#4a3222',
+  K: '#2e1e14',
 };
 
 function buildAnglerSprites() {
@@ -115,7 +139,6 @@ function buildAnglerSprites() {
     ANGLER_PAL,
   );
 
-  // Napping against a post: hat tilted forward, knees bent, scarf draped over chest (22 rows).
   const anglerNap = box(
     pixmap(
       [
@@ -141,7 +164,6 @@ function buildAnglerSprites() {
     ),
   );
 
-  // Reeling in: leaning slightly back, two hands gripping rod/reel (24 rows).
   const anglerReel = pair(
     [
       '....hhhhh.......',
@@ -170,7 +192,6 @@ function buildAnglerSprites() {
     ANGLER_PAL,
   );
 
-  // Cooking: crouched beside camp stove holding skillet handle (21 rows).
   const anglerCook = box(
     pixmap(
       [
@@ -197,7 +218,6 @@ function buildAnglerSprites() {
     ),
   );
 
-  // Night sitting with lantern: seated on jetty edge, legs dangling slightly (23 rows).
   const anglerLantern = box(
     pixmap(
       [
@@ -258,16 +278,16 @@ function buildAnglerSprites() {
   return { anglerCast, anglerNap, anglerReel, anglerCook, anglerLantern, secondAngler };
 }
 
-/** Recurring scruffy golden-brown dog with matching red scarf (15 rows tall x 20 wide). */
+/** Recurring scruffy golden-brown dog with matching red scarf. */
 function buildDogSprites() {
   const pal: Readonly<Record<string, string>> = {
-    b: '#c98e4c', // golden fur lit
-    B: '#9c662e', // mid fur
-    d: '#6e421c', // ear / shadow
-    e: '#241a14', // eye / nose
-    r: '#dc4438', // matching red scarf
-    R: '#982822', // scarf shadow
-    p: '#e8a898', // tongue / belly highlight
+    b: '#c98e4c',
+    B: '#9c662e',
+    d: '#6e421c',
+    e: '#241a14',
+    r: '#dc4438',
+    R: '#982822',
+    p: '#e8a898',
   };
 
   const sitA = box(
@@ -390,158 +410,101 @@ function buildDogSprites() {
   return { dogSitA: sitA, dogSitB: sitB, dogLookA: lookA, dogLookB: lookB, dogRestA: restA, dogRestB: restB };
 }
 
-function buildPropSprites() {
-  const tackleBox = box(
+/** Pier ginger-and-cream cat watching the fish bucket or curled napping on crates. */
+function buildCatSprites() {
+  const pal: Readonly<Record<string, string>> = {
+    o: '#d8823c',
+    O: '#a65824',
+    d: '#6e3614',
+    c: '#f0e2cc',
+    e: '#261c16',
+    p: '#e89aa0',
+  };
+
+  const catSitA = box(
     pixmap(
       [
-        '....mmmmmm......',
-        '...m......m.....',
-        '.rrrrrrrrrrrr...',
-        'rrrrrrrrrrrrrr..',
-        'rRrrrrrrrrrrRr..',
-        'mmmmmmmmmmmmmm..',
-        'rRRRRrmmRRRRRr..',
-        'rRRRRRRRRRRRRr..',
-        'rRRRRRRRRRRRRr..',
-        'dddddddddddddd..',
+        '....o..o....',
+        '...oooooo...',
+        '...ooeeoo...',
+        '....oopo....',
+        '...ooccoo...',
+        '..oooccooo..',
+        '..oOoccoOo..',
+        '.d.oOOOOo...',
+        'd..oOOOOo...',
+        '.d.cc..cc...',
+        '............',
       ],
-      { r: '#c84a3e', R: '#8c2c24', d: '#581c16', m: '#bcc4cc' },
+      pal,
     ),
   );
 
-  const thermos = box(
+  const catSitB = box(
     pixmap(
       [
-        '.mmmm.',
-        '.mmmm.',
-        '.dddd.',
-        'rrrrrr',
-        'rRRRRr',
-        'rRRRRr',
-        'rRRRRr',
-        'rRRRRr',
-        'rRRRRr',
-        'mmmmmm',
-        '.dddd.',
+        '....o..o....',
+        '...oooooo...',
+        '...ooeeoo...',
+        '....oopo....',
+        '...ooccoo...',
+        '..oooccooo..',
+        '..oOoccoOo..',
+        '...oOOOOod..',
+        '...oOOOOo.d.',
+        '...cc..cc.d.',
+        '............',
       ],
-      { r: '#b84238', R: '#882c24', m: '#c8d0d6', d: '#4c545c' },
+      pal,
     ),
   );
 
-  const bucketEmpty = box(
+  const catLook = box(
     pixmap(
       [
-        '...mmmmmm...',
-        '..m......m..',
-        '.m........m.',
-        'rrrrrrrrrrrr',
-        'rddddddddddr',
-        'rrrrrrrrrrrr',
-        'rRrrrrrrrrRr',
-        'rRrrrrrrrrRr',
-        '.rRrrrrrrRr.',
-        '.rRrrrrrrRr.',
-        '.dddddddddd.',
+        '....o..o....',
+        '...oOeeOo...',
+        '...ooeeoo...',
+        '....ocpo....',
+        '...ooccoo...',
+        '..oooccooo..',
+        '.doOoccoOo..',
+        'd..oOOOOo...',
+        '.d.oOOOOo...',
+        '...cc..cc...',
+        '............',
       ],
-      { m: '#aeb8c2', r: '#cc4e40', R: '#943028', d: '#641e18' },
+      pal,
     ),
   );
 
-  const bucketFull = box(
+  const catNapA = box(
     pixmap(
       [
-        '...s..f.....',
-        '..ss.ff..s..',
-        '..smmmmmmf..',
-        '..m......m..',
-        'rrrrrrrrrrrr',
-        'rddddddddddr',
-        'rrrrrrrrrrrr',
-        'rRrrrrrrrrRr',
-        'rRrrrrrrrrRr',
-        '.rRrrrrrrRr.',
-        '.rRrrrrrrRr.',
-        '.dddddddddd.',
+        '......o..o...',
+        '..ooooooooo..',
+        '.ooOoooOoooo.',
+        'ooOOooooOcco.',
+        'dddddddddddd.',
       ],
-      { m: '#aeb8c2', r: '#cc4e40', R: '#943028', d: '#641e18', s: '#b6ccd4', f: '#d6a456' },
+      pal,
     ),
   );
 
-  const stove = box(
+  const catNapB = box(
     pixmap(
       [
-        '...kkkkkkkkkkkkkkk',
-        '..kfffffffffkkkk..',
-        '..kkkkkkkkkk......',
-        '...oooooooooo.....',
-        '..dmmmmmmmmmmmd...',
-        '..dmmmmooooommd...',
-        '..dmddmmoomddmd...',
-        '..dddddddddddd....',
-        '..dd........dd....',
+        '.............',
+        '......o..o...',
+        '..ooooooooo..',
+        '.ooOoooOoooo.',
+        'dddddddddddd.',
       ],
-      { k: '#363c44', f: '#e6b872', o: '#f28c38', m: '#7e8892', d: '#464e56' },
+      pal,
     ),
   );
 
-  const lantern = box(
-    pixmap(
-      [
-        '...bbb...',
-        '..b...b..',
-        '..bbbbb..',
-        '.bgggggb.',
-        '.bgyyygb.',
-        '.bgywygb.',
-        '.bgyyygb.',
-        '.bgggggb.',
-        '.bbbbbbb.',
-        'bbbbbbbbb',
-        '.ddddddd.',
-      ],
-      { b: '#946e2e', d: '#543c18', g: '#f2b84c', y: '#ffe48a', w: '#fff8d4' },
-    ),
-  );
-
-  const rowboat = box(
-    pixmap(
-      [
-        '................b.............................b.........',
-        '...............bbb...........................bbb........',
-        '......wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww.....',
-        '...wwwwwwwwwwwwwwwbbbbbbbbbbbbbbbbbwwwwwwwwwwwwwwwww....',
-        '..wbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbw....',
-        '..bbbbbbbbbBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBbbbbbbbbbb.....',
-        '...bbbbBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBbbbbb......',
-        '....BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB........',
-        '.....dddddddddddddddddddddddddddddddddddddddddd.........',
-      ],
-      { w: '#d6bc92', b: '#8c5a34', B: '#663e22', d: '#442816' },
-    ),
-  );
-
-  const boathouse = box(
-    pixmap(
-      [
-        '..............rrrrrrrrrrrr..............',
-        '...........rrrrrrrrrrrrrrrrrr...........',
-        '........rrrrrrrrrrrrrrrrrrrrrrrr........',
-        '.....rrrrrrrrrrrrrrrrrrrrrrrrrrrrrr.....',
-        '..rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr..',
-        '.....wwwwwwwwwwwwwwwwwwwwwwwwwwwwww.....',
-        '.....wwwwwwwwwwwwwwwwwwwwwwwwwwwwww.....',
-        '.....wwwddddwwwwwgggggwwwwwddddwwww.....',
-        '.....wwwddddwwwwwgggggwwwwwddddwwww.....',
-        '.....wwwddddwwwwwwwwwwwwwwwddddwwww.....',
-        '.....wwwwwwwwwwwwwwwwwwwwwwwwwwwwww.....',
-        '.....bbbbbbbbbbbbbbbbbbbbbbbbbbbbbb.....',
-        '.....bb..bb......bb..bb......bb..bb.....',
-      ],
-      { r: '#6c4236', w: '#8a7a68', d: '#443830', g: '#5a7080', b: '#4a3628' },
-    ),
-  );
-
-  return { tackleBox, thermos, bucketEmpty, bucketFull, stove, lantern, rowboat, boathouse };
+  return { catSitA, catSitB, catLook, catNapA, catNapB };
 }
 
 /** Builds every sprite once into memory canvases. */
@@ -549,7 +512,8 @@ export function buildFishingSprites(): FishingSprites {
   return {
     ...buildAnglerSprites(),
     ...buildDogSprites(),
-    ...buildPropSprites(),
+    ...buildCatSprites(),
+    ...buildPropAndStructureSprites(),
     ...buildBirdSprites(),
     ...buildFishSprites(),
     ...buildFloraSprites(),

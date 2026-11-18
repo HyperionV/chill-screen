@@ -1,17 +1,14 @@
-import { css, mix, shade, type RGB } from '../../../render/color';
-import { fbm, hash } from '../../journeys/noise';
+import { memoryCanvas } from '../../../render/pixel-stage';
 import type { SkyState } from '../../sky';
 import { drawBoxBottom, type FishingCreatures } from './creatures';
+import { FarShore } from './far-shore';
 import { anchorsForScene, type FishingInteractions } from './interactions';
+import { LakeLights } from './lake-lights';
+import { NearShore } from './near-shore';
 import type { FishingSprites, SpriteBox } from './sprites';
-import { HORIZON, WATER_TOP, type SceneIndex, type SceneLayout } from './types';
-
-const WHITE: RGB = [255, 255, 255];
-const PLANK_LIT: RGB = [152, 114, 78];
-const PLANK_MID: RGB = [118, 86, 58];
-const PLANK_DARK: RGB = [76, 54, 36];
-const PILING: RGB = [68, 48, 34];
-const PILING_SHADE: RGB = [44, 32, 22];
+import { drawJetty, drawMooredSkiff, drawPost, drawRod, drawSceneFlora } from './structures';
+import type { SceneIndex, SceneLayout } from './types';
+import { FishingWater } from './water';
 
 function drawScaled(
   ctx: CanvasRenderingContext2D,
@@ -19,48 +16,53 @@ function drawScaled(
   dx: number,
   dy: number,
   unit: number,
+  positionUnit = unit,
 ): void {
   const sw = Math.max(1, Math.round(sp.w * unit));
   const sh = Math.max(1, Math.round(sp.h * unit));
-  ctx.drawImage(sp.canvas, 0, 0, sp.w, sp.h, Math.round(dx * unit), Math.round(dy * unit), sw, sh);
+  ctx.drawImage(sp.canvas, 0, 0, sp.w, sp.h, Math.round(dx * positionUnit), Math.round(dy * positionUnit), sw, sh);
 }
 
-/** Draws a timber fishing rod extending from `(x0, y0)` to `(x1, y1)` with optional bend. */
-function drawRod(
-  ctx: CanvasRenderingContext2D,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  bend: number,
-  unit: number,
-): void {
-  const dot = Math.max(1, Math.round(unit));
-  ctx.fillStyle = '#4e3522';
-  const steps = 16;
-  for (let i = 0; i <= steps; i++) {
-    const k = i / steps;
-    const rx = x0 + (x1 - x0) * k;
-    const ry = y0 + (y1 - y0) * k + k * k * bend;
-    ctx.fillRect(Math.round(rx * unit), Math.round(ry * unit), dot, dot);
-  }
+const DECK_FIRST_ROW = 202;
+const DECK_CACHE_ROWS = 54;
+const SKIFF_LANDING_ROW = 193;
+const ROWBOAT_MOORING_ROW = 222;
+const DINGHY_LAMP_SCALE = 0.25;
+
+function buildDecks(layout: SceneLayout): HTMLCanvasElement[] {
+  const j = layout.jettyRight;
+  const d = layout.deckY;
+  const pierPost = Math.round(j * 0.56);
+  const sections = [
+    { start: 0, end: j, y: d, posts: [20, 64, 112, j - 14] },
+    { start: 12, end: 118, y: d + 2, posts: [24, 68, 110] },
+    { start: 8, end: 132, y: d + 4, posts: [18, 66, 120] },
+    { start: 0, end: j, y: d, posts: [28, pierPost, j - 8] },
+    { start: 0, end: j - 6, y: d, posts: [24, 72, 124, j - 16] },
+  ];
+  return sections.map(({ start, end, y, posts }) => {
+    const { canvas, ctx } = memoryCanvas(Math.ceil(Math.max(1, end)), DECK_CACHE_ROWS);
+    ctx.translate(0, -DECK_FIRST_ROW);
+    drawJetty(ctx, start, end, y, 1, posts.filter((x) => x >= start && x <= end).sort((a, b) => a - b));
+    return canvas;
+  });
 }
 
-/** Renders backdrop ridges, water layers, five scene compositions, props, cast, and foreground framing. */
+/** Renders the lake, shorelines and five scene compositions. */
 export class FishingScenes {
-  private ridgeTops = new Int16Array(0);
-  private w = 0;
+  private readonly water = new FishingWater();
+  private readonly farShore = new FarShore();
+  private readonly nearShore = new NearShore();
+  private readonly lights = new LakeLights();
+  private decks: HTMLCanvasElement[] = [];
   private h = 0;
 
-  resize(w: number, h: number): void {
-    this.w = w;
+  resize(w: number, h: number, layout: SceneLayout, sprites: FishingSprites): void {
     this.h = h;
-    this.ridgeTops = new Int16Array(w);
-    const hy = h * HORIZON;
-    const reach = h * 0.065;
-    for (let x = 0; x < w; x++) {
-      this.ridgeTops[x] = Math.round(hy - (0.2 + 0.8 * fbm(x * 0.008 + 4.2)) * reach);
-    }
+    this.water.resize(w, h, layout);
+    this.farShore.resize(layout, sprites);
+    this.nearShore.resize(layout, sprites);
+    this.decks = buildDecks(layout);
   }
 
   /** Computes the horizontal position of Scene 2's drifting rowboat in design pixels. */
@@ -68,182 +70,70 @@ export class FishingScenes {
     return layout.rightZone + 32 + Math.sin(time * 0.16) * 14;
   }
 
-  /** Layer 1 & 2: distant misty shoreline ridges, far pines, mid trees, and distant boathouse. */
+  /** Computes the horizontal position & direction of the distant sailing dinghy in design pixels. */
+  private dinghyState(time: number, layout: SceneLayout): { x: number; dir: 1 | -1 } {
+    const minX = layout.designW * 0.24;
+    const maxX = layout.designW * 0.74;
+    const span = Math.max(40, maxX - minX);
+    const period = span * 2;
+    const pos = ((time * 2.2 + 65) % period + period) % period;
+    if (pos <= span) return { x: minX + pos, dir: 1 };
+    return { x: maxX - (pos - span), dir: -1 };
+  }
+
   drawBackdrop(
+    ctx: CanvasRenderingContext2D,
+    state: SkyState,
+    scene: SceneIndex,
+    layout: SceneLayout,
+    parallaxX: number,
+    time: number,
+  ): void {
+    this.farShore.draw(ctx, state, scene, layout, parallaxX, time);
+  }
+
+  /** Layer 3: layered lake water, shore reflections, wave dashes, sun/moon glitter, and distant sailing dinghy. */
+  drawWater(
     L: CanvasRenderingContext2D,
     sprites: FishingSprites,
     state: SkyState,
     scene: SceneIndex,
     layout: SceneLayout,
-    parallaxX: number,
-    time: number,
-  ): void {
-    const u = layout.unit;
-    const hy = Math.round(this.h * HORIZON);
-    const waterTop = Math.round(this.h * WATER_TOP);
-    const ridgeCol = css(mix(mix([68, 92, 96], state.sky.horizon, 0.58), state.sky.zenith, 0.15));
-    const bankCol = css(mix([54, 80, 62], state.sky.horizon, 0.35));
-
-    const farShift = Math.round(parallaxX * 1.5 * u);
-    const midShift = Math.round(parallaxX * 3.0 * u);
-
-    // Distant ridge silhouette (kept low-contrast under the clock band)
-    L.fillStyle = ridgeCol;
-    for (let x = 0; x < this.w; x++) {
-      const sx = Math.max(0, Math.min(this.w - 1, x - farShift));
-      const top = this.ridgeTops[sx] ?? hy;
-      L.fillRect(x, top, 1, waterTop - top + 1);
-    }
-
-    // Distant pine silhouettes along the far ridge
-    const pineStep = Math.round(22 * u);
-    for (let px = -pineStep; px < this.w + pineStep; px += pineStep) {
-      const seed = Math.round(px * 13 + scene * 31);
-      if (hash(seed) < 0.32) continue;
-      const sx = px + farShift + Math.round((hash(seed + 1) - 0.5) * 8 * u);
-      const sp = sprites.farPines[Math.floor(hash(seed + 2) * sprites.farPines.length)];
-      if (!sp) continue;
-      const baseY = (this.ridgeTops[Math.max(0, Math.min(this.w - 1, sx))] ?? hy) + Math.round(4 * u);
-      L.save();
-      L.globalAlpha = 0.45;
-      L.drawImage(sp.canvas, 0, 0, sp.w, sp.h, Math.round(sx - (sp.w * u) / 2), Math.round(baseY - sp.h * u), Math.round(sp.w * u), Math.round(sp.h * u));
-      L.restore();
-    }
-
-    // Mid-distance far shore strip & lakeside trees
-    L.fillStyle = bankCol;
-    L.fillRect(0, waterTop - Math.round(3 * u), this.w, Math.round(5 * u));
-
-    const treeStep = Math.round(46 * u);
-    for (let tx = 0; tx < this.w + treeStep; tx += treeStep) {
-      const seed = tx * 17 + scene * 73;
-      if (hash(seed) < 0.35) continue;
-      const sx = tx + midShift + Math.round((hash(seed + 1) - 0.5) * 14 * u);
-      const sp = sprites.midTrees[Math.floor(hash(seed + 2) * sprites.midTrees.length)];
-      if (!sp) continue;
-      const sway = Math.round(Math.sin(time * 0.6 + tx * 0.03) * 0.8 * u);
-      const sw = Math.round(sp.w * u * 0.85);
-      const sh = Math.round(sp.h * u * 0.85);
-      L.drawImage(sp.canvas, 0, 0, sp.w, sp.h, Math.round(sx - sw / 2) + sway, waterTop - sh + Math.round(2 * u), sw, sh);
-    }
-
-    // Distant boathouse on the far shore in Scenes 0 and 4
-    if (scene === 0 || scene === 4) {
-      const bx = (layout.rightZone + 54) * u + midShift;
-      const by = waterTop - Math.round((sprites.boathouse.h - 2) * u);
-      L.drawImage(
-        sprites.boathouse.canvas,
-        0,
-        0,
-        sprites.boathouse.w,
-        sprites.boathouse.h,
-        Math.round(bx),
-        by,
-        Math.round(sprites.boathouse.w * u),
-        Math.round(sprites.boathouse.h * u),
-      );
-    }
-  }
-
-  /** Layer 3: layered lake water, wave dashes, sun/moon glitter, and star reflections. */
-  drawWater(
-    L: CanvasRenderingContext2D,
-    state: SkyState,
-    scene: SceneIndex,
-    layout: SceneLayout,
     time: number,
     parallaxX: number,
   ): void {
+    this.water.drawWater(L, state, scene, layout, time, parallaxX);
+    this.farShore.drawReflection(L, scene, layout, parallaxX, time);
+    this.nearShore.draw(L, layout, scene, parallaxX);
+
+    // Distant sailing dinghy slowly tacking across the far lake (below the clock band)
     const u = layout.unit;
-    const top = Math.round(this.h * WATER_TOP);
-    const bot = this.h;
-    const span = Math.max(1, bot - top);
-
-    const eveningWarm = scene === 3 ? 0.28 : 0;
-    const nightCalm = scene === 4 ? 0.25 : 0;
-    let topCol = mix(state.sky.horizon, state.sky.water, 0.48);
-    let deepCol = shade(state.sky.water, 0.72);
-    if (eveningWarm > 0) {
-      topCol = mix(topCol, [214, 134, 88], eveningWarm * 0.65);
-      deepCol = mix(deepCol, [78, 56, 76], eveningWarm * 0.55);
-    }
-    if (nightCalm > 0) {
-      topCol = mix(topCol, [24, 34, 62], nightCalm);
-      deepCol = mix(deepCol, [12, 18, 38], nightCalm);
-    }
-
-    const g = L.createLinearGradient(0, top, 0, bot);
-    g.addColorStop(0, css(topCol));
-    g.addColorStop(0.32, css(mix(topCol, deepCol, 0.55)));
-    g.addColorStop(1, css(deepCol));
-    L.fillStyle = g;
-    L.fillRect(0, top, this.w, span);
-
-    // Subtle shoreline reflection band
-    const shoreReflect = css(mix(topCol, [46, 68, 58], 0.5), 0.35);
-    L.fillStyle = shoreReflect;
-    L.fillRect(0, top, this.w, Math.round(8 * u));
-
-    // Gentle horizontal pixel wave dashes
-    const crest = css(mix(topCol, WHITE, 0.14 + 0.16 * state.day), 0.34 + 0.2 * state.day);
-    const trough = css(shade(deepCol, 0.78), 0.45);
-    const pShift = parallaxX * 3.5 * u;
-    for (let y = top + 3; y < bot; y += Math.max(2, Math.round(2 * u))) {
-      const f = (y - top) / span;
-      const spacing = (14 + 34 * f * f) * u;
-      const len = Math.max(2, Math.round((2 + 8 * f * f) * u));
-      const drift = (hash(y) - 0.5) * 2.4 * u;
-      const count = Math.ceil(this.w / spacing) + 1;
-      for (let j = 0; j < count; j++) {
-        const seed = y * 131 + j;
-        if (Math.sin(time * (0.45 + hash(seed) * 0.55) + hash(seed + 0.3) * 6.28) < 0.25) continue;
-        const x = (((((j + hash(seed + 0.7)) * spacing + time * drift + pShift * (0.4 + f)) % this.w) + this.w) % this.w);
-        L.fillStyle = hash(seed + 0.9) < 0.4 ? trough : crest;
-        L.fillRect(Math.round(x), y, len, Math.max(1, Math.round(u)));
-      }
-    }
-
-    // Sun or moon glitter path
-    const body = state.sun.up > -0.02 ? state.sun : state.moon;
-    if (body.up > -0.02) {
-      const isSun = state.sun.up > -0.02;
-      const strength = isSun ? 0.55 : 0.45 * (1 - state.day);
-      const col = isSun ? mix(state.sky.light, WHITE, 0.5) : ([216, 226, 252] satisfies RGB);
-      const cx = body.u * this.w + pShift * 0.5;
+    const dot = Math.max(1, Math.round(u));
+    const dinghy = this.dinghyState(time, layout);
+    const dx = dinghy.x + parallaxX * 3.8;
+    const dy = layout.waterTopY + 14 + Math.sin(time * 1.2) * 0.4;
+    const sp = dinghy.dir >= 0 ? sprites.sailingDinghy.right : sprites.sailingDinghy.left;
+    L.save();
+    L.globalAlpha = 0.82;
+    drawBoxBottom(L, sp, dx, dy, u);
+    L.restore();
+    if (state.day < 0.38) {
+      const lampY = dy - sp.h;
+      const halo = sprites.haloEmber;
+      const haloWidth = Math.max(1, Math.round(halo.w * DINGHY_LAMP_SCALE * u));
       L.save();
-      L.fillStyle = css(col);
-      for (let i = 0; i < 42; i++) {
-        const period = 0.9 + hash(i) * 1.1;
-        const clk = time / period + hash(i + 0.5);
-        const n = Math.floor(clk);
-        const seed = i * 7919 + n * 104729;
-        const f = hash(seed) ** 0.85;
-        const gy = Math.round(top + 2 + (span - 8) * f * f);
-        const spread = this.w * (0.015 + 0.09 * f);
-        const gx = cx + (hash(seed + 1) + hash(seed + 2) - 1) * spread;
-        const glen = Math.max(2, Math.round((1 + 4 * f) * u));
-        L.globalAlpha = Math.sin(Math.PI * (clk - n)) ** 2 * strength;
-        L.fillRect(Math.round(gx - glen / 2), gy, glen, Math.max(1, Math.round(u)));
-      }
+      L.globalAlpha = (0.38 - state.day) * 1.6;
+      L.drawImage(halo.canvas, Math.round(dx * u - haloWidth / 2), Math.round(lampY * u - haloWidth / 2), haloWidth, haloWidth);
+      L.fillStyle = 'rgba(255,227,159,0.72)';
+      L.fillRect(Math.round(dx * u), Math.round(lampY * u), dot, dot);
       L.restore();
     }
-
-    // Reflected stars on calm water at night or in Scene 4 (Night Fishing)
-    const starShow = scene === 4 ? Math.max(0.55, 1 - state.day) : Math.max(0, 1 - state.day * 1.3);
-    if (starShow > 0.08) {
-      const dot = Math.max(1, Math.round(u));
-      for (let i = 0; i < 28; i++) {
-        const sx = Math.round(hash(i * 41 + 3) * this.w + pShift * 0.5);
-        const sy = Math.round(top + 6 * u + hash(i * 41 + 7) * (span * 0.52));
-        const tw = 0.45 + 0.55 * Math.sin(time * (1.2 + hash(i) * 1.4) + i);
-        L.fillStyle = `rgba(226,236,255,${(0.45 * starShow * tw).toFixed(3)})`;
-        L.fillRect(sx, sy, dot, dot);
-        if (tw > 0.72) L.fillRect(sx, sy + dot * 2, dot, dot);
-      }
-    }
+    L.fillStyle = 'rgba(226,240,248,0.34)';
+    L.fillRect(Math.round((dx - dinghy.dir * 12) * u), Math.round(dy * u), Math.round(8 * u), dot);
+    L.fillRect(Math.round((dx - dinghy.dir * 19) * u), Math.round((dy + 1) * u), Math.round(5 * u), dot);
   }
 
-  /** Layer 4: wooden structures, scene props, recurring angler + dog, birds, and fishing line. */
+  /** Layer 4: wooden structures, scene props, recurring angler + dog + cat, birds, and fishing line. */
   drawSceneMidground(
     L: CanvasRenderingContext2D,
     sprites: FishingSprites,
@@ -260,33 +150,52 @@ export class FishingScenes {
     L.save();
     L.translate(Math.round(shift * u), 0);
 
-    // Draw underwater shadows and water rings before pier/jetty structures
     creatures.drawFishShadows(L, scene, u, state.day);
+    creatures.drawSurfaceLife(L, sprites, scene, layout, time, state.day);
     interactions.drawRings(L, u, state.day);
+    drawSceneFlora(L, sprites, scene, layout, u, time);
 
     const anchors = anchorsForScene(scene, layout);
     const dogFrame = Math.floor(time * 3.8) % 2 === 0;
     const dogAlert = interactions.dogAlert > 0.35;
+    const catFrame = Math.floor(time * 1.8) % 2 === 0;
+    const catAlert = interactions.catAlert > 0.35;
 
+    const deck = this.decks[scene];
+    if (deck) {
+      L.drawImage(deck, 0, Math.round(DECK_FIRST_ROW * u), Math.round(deck.width * u), Math.round(deck.height * u));
+    }
     if (scene === 0) {
-      this.drawJetty(L, 0, layout.jettyRight, layout.deckY, u, [22, 68, 114, layout.jettyRight - 14]);
-      drawBoxBottom(L, sprites.tackleBox, 56, layout.deckY, u);
+      drawBoxBottom(L, sprites.rodRack, 16, layout.deckY, u);
+      drawBoxBottom(L, sprites.crates, 38, layout.deckY, u);
+      const catSp = catAlert ? sprites.catLook : catFrame ? sprites.catSitA : sprites.catSitB;
+      drawBoxBottom(L, catSp, 42, layout.deckY - 11, u);
+      drawBoxBottom(L, sprites.tackleBox, 58, layout.deckY, u);
       drawBoxBottom(L, sprites.thermos, 72, layout.deckY, u);
+      drawBoxBottom(L, sprites.coiledRope, 86, layout.deckY, u);
       drawBoxBottom(L, sprites.bucketEmpty, anchors.bucketX, anchors.bucketY, u);
       interactions.drawBucketTally(L, sprites, anchors.bucketX, anchors.bucketY, u);
       drawBoxBottom(L, sprites.anglerCast.right, layout.jettyRight - 42, layout.deckY, u);
       drawRod(L, layout.jettyRight - 36, layout.deckY - 12, anchors.rodTipX, anchors.rodTipY, 1.5, u);
       const dogSp = dogAlert ? (dogFrame ? sprites.dogLookA : sprites.dogLookB) : dogFrame ? sprites.dogSitA : sprites.dogSitB;
       drawBoxBottom(L, dogSp, anchors.dogX, anchors.dogY, u);
+      drawPost(L, layout.jettyRight - 10, layout.deckY, 29, u);
+      drawBoxBottom(L, sprites.netPost, layout.jettyRight - 10, layout.deckY, u);
+      drawScaled(L, sprites.lantern, layout.jettyRight - 14, layout.deckY - 26, u);
+
+      drawMooredSkiff(L, sprites, layout.rightZone + 10, layout.rightZone + 34, 190, time, u);
+      drawPost(L, layout.rightZone + 128, 212, 20, u);
     } else if (scene === 1) {
-      this.drawReedShallows(L, sprites, layout, u, time);
-      this.drawJetty(L, 12, 116, layout.deckY + 2, u, [24, 68, 108]);
-      // Backrest post for the napping angler
-      this.drawPost(L, 48, layout.deckY + 2, 22, u);
+      drawBoxBottom(L, sprites.rodRack, 19, layout.deckY + 2, u);
+      drawBoxBottom(L, sprites.crates, 24, layout.deckY + 2, u);
+      drawPost(L, 48, layout.deckY + 2, 34, u);
+      drawScaled(L, sprites.lantern, 44, layout.deckY - 30, u);
       drawBoxBottom(L, sprites.anglerNap, 58, layout.deckY + 2, u);
       drawRod(L, 64, layout.deckY - 4, anchors.rodTipX, anchors.rodTipY, 0.5, u);
+      drawBoxBottom(L, sprites.coiledRope, 80, layout.deckY + 2, u);
       drawBoxBottom(L, sprites.bucketEmpty, anchors.bucketX, anchors.bucketY, u);
       interactions.drawBucketTally(L, sprites, anchors.bucketX, anchors.bucketY, u);
+      drawBoxBottom(L, sprites.netPost, 112, layout.deckY + 2, u);
       const dogSp = dogAlert
         ? dogFrame
           ? sprites.dogLookA
@@ -295,48 +204,61 @@ export class FishingScenes {
           ? sprites.dogRestA
           : sprites.dogRestB;
       drawBoxBottom(L, dogSp, anchors.dogX, anchors.dogY, u);
-      // Weathered post on right for kingfisher
-      this.drawPost(L, layout.rightZone + 34, 214, 30, u);
+      drawMooredSkiff(L, sprites, layout.rightZone + 6, layout.rightZone + 29, SKIFF_LANDING_ROW, time, u);
+      drawPost(L, layout.rightZone + 34, 214, 30, u);
+      drawPost(L, layout.rightZone + 126, 214, 22, u);
     } else if (scene === 2) {
-      this.drawJetty(L, 8, 130, layout.deckY + 4, u, [18, 66, 120]);
+      drawBoxBottom(L, sprites.rodRack, 15, layout.deckY + 4, u);
+      drawBoxBottom(L, sprites.crates, 30, layout.deckY + 4, u);
       drawBoxBottom(L, sprites.bucketEmpty, anchors.bucketX, anchors.bucketY, u);
       interactions.drawBucketTally(L, sprites, anchors.bucketX, anchors.bucketY, u);
+      drawBoxBottom(L, sprites.coiledRope, 82, layout.deckY + 4, u);
       drawBoxBottom(L, sprites.anglerReel.right, 94, layout.deckY + 4, u);
       drawRod(L, 100, layout.deckY - 6, anchors.rodTipX, anchors.rodTipY, 3.8, u);
+      drawPost(L, 124, layout.deckY + 4, 28, u);
+      drawBoxBottom(L, sprites.netPost, 124, layout.deckY + 4, u);
+      drawScaled(L, sprites.lantern, 120, layout.deckY - 22, u);
       const dogSp = dogAlert ? (dogFrame ? sprites.dogLookA : sprites.dogLookB) : dogFrame ? sprites.dogSitA : sprites.dogSitB;
       drawBoxBottom(L, dogSp, anchors.dogX, anchors.dogY, u);
 
-      // Morning rowboat with second angler
       const bx = this.rowboatX(time, layout);
       const by = 188 + Math.sin(time * 1.5) * 0.8;
       drawBoxBottom(L, sprites.secondAngler, bx - 4, by - 5, u);
       drawBoxBottom(L, sprites.rowboat, bx, by, u);
-      // Oar dipping into water
       drawRod(L, bx + 2, by - 7, bx + 16, by + 2, 0.5, u);
       L.fillStyle = 'rgba(235,248,255,0.42)';
-      L.fillRect(Math.round((bx - 24) * u), Math.round(by * u), Math.round(48 * u), Math.max(1, Math.round(u)));
-    } else if (scene === 3) {
-      this.drawJetty(L, 0, layout.jettyRight, layout.deckY, u, [28, Math.round(layout.jettyRight * 0.56), layout.jettyRight - 8]);
-      // Tall pier posts & right mooring posts for gulls
-      const postXs = [28, Math.round(layout.jettyRight * 0.56), layout.jettyRight - 8];
-      for (const px of postXs) this.drawPost(L, px, layout.deckY, 14, u);
-      this.drawPost(L, layout.rightZone + 36, 214, 28, u);
-      this.drawPost(L, layout.rightZone + 110, 216, 30, u);
+      const dot = Math.max(1, Math.round(u));
+      L.fillRect(Math.round((bx - 24) * u), Math.round(by * u), Math.round(17 * u), dot);
+      L.fillRect(Math.round((bx + 9) * u), Math.round((by + 1) * u), Math.round(16 * u), dot);
 
-      // Lanterns mounted on posts (warm housing drawn pre-tint, glow drawn post-tint)
+      drawPost(L, layout.rightZone + 18, 212, 24, u);
+      const mooring = layout.designW * 0.85;
+      drawMooredSkiff(L, sprites, mooring, mooring + 24, ROWBOAT_MOORING_ROW, time, u);
+    } else if (scene === 3) {
+      const postXs = [28, Math.round(layout.jettyRight * 0.56), layout.jettyRight - 8];
+      for (const px of postXs) drawPost(L, px, layout.deckY, 14, u);
+      drawPost(L, layout.rightZone + 36, 214, 28, u);
+      drawPost(L, layout.rightZone + 110, 216, 30, u);
+
+      drawBoxBottom(L, sprites.rodRack, 14, layout.deckY, u);
+      drawBoxBottom(L, sprites.crates, 42, layout.deckY, u);
+      drawBoxBottom(L, sprites.netPost, 61, layout.deckY, u);
+      drawBoxBottom(L, sprites.coiledRope, 56, layout.deckY, u);
       drawScaled(L, sprites.lantern, 24, layout.deckY - 12, u);
       drawScaled(L, sprites.lantern, layout.jettyRight - 12, layout.deckY - 12, u);
-      drawScaled(L, sprites.lantern, layout.rightZone + 32, 190, u);
 
-      // Bucket brimming with caught fish + catch tally + camp stove + cooking angler + eager dog
       drawBoxBottom(L, sprites.bucketFull, anchors.bucketX, anchors.bucketY, u);
       interactions.drawBucketTally(L, sprites, anchors.bucketX, anchors.bucketY, u);
       drawBoxBottom(L, sprites.stove, layout.jettyRight - 58, layout.deckY, u);
       drawBoxBottom(L, sprites.anglerCook, layout.jettyRight - 36, layout.deckY, u);
+      const catSp = catAlert ? sprites.catLook : catFrame ? sprites.catSitA : sprites.catSitB;
+      drawBoxBottom(L, catSp, layout.jettyRight - 18, layout.deckY, u);
       const dogSp = dogAlert ? (dogFrame ? sprites.dogLookA : sprites.dogLookB) : dogFrame ? sprites.dogSitA : sprites.dogSitB;
       drawBoxBottom(L, dogSp, anchors.dogX, anchors.dogY, u);
 
-      // Gentle steam wisps rising from the skillet
+      drawMooredSkiff(L, sprites, layout.rightZone + 36, layout.rightZone + 62, 191, time, u);
+      drawScaled(L, sprites.lantern, layout.rightZone + 32, 190, u);
+
       const steamX = Math.round((layout.jettyRight - 60) * u);
       const steamY = Math.round((layout.deckY - 14) * u);
       const dot = Math.max(1, Math.round(u));
@@ -347,84 +269,57 @@ export class FishingScenes {
         L.fillRect(Math.round(steamX + sway + i * dot), Math.round(steamY - lift), dot, dot * 2);
       }
     } else {
-      // Scene 4: Night Fishing
-      this.drawJetty(L, 0, layout.jettyRight - 6, layout.deckY, u, [24, 72, 124, layout.jettyRight - 16]);
+      drawBoxBottom(L, sprites.rodRack, 16, layout.deckY, u);
+      drawBoxBottom(L, sprites.crates, 36, layout.deckY, u);
+      const catSp = catAlert ? sprites.catLook : Math.sin(time * 1.3) > 0 ? sprites.catNapA : sprites.catNapB;
+      drawBoxBottom(L, catSp, 38, layout.deckY - 11, u);
+      drawBoxBottom(L, sprites.coiledRope, 56, layout.deckY, u);
       drawBoxBottom(L, sprites.bucketEmpty, anchors.bucketX, anchors.bucketY, u);
       interactions.drawBucketTally(L, sprites, anchors.bucketX, anchors.bucketY, u);
       drawBoxBottom(L, sprites.anglerLantern, layout.jettyRight - 38, layout.deckY + 6, u);
       drawRod(L, layout.jettyRight - 32, layout.deckY - 4, anchors.rodTipX, anchors.rodTipY, 1.2, u);
       const dogSp = dogAlert ? (dogFrame ? sprites.dogLookA : sprites.dogLookB) : dogFrame ? sprites.dogSitA : sprites.dogSitB;
       drawBoxBottom(L, dogSp, anchors.dogX, anchors.dogY, u);
+      drawBoxBottom(L, sprites.netPost, layout.jettyRight - 10, layout.deckY, u);
       drawBoxBottom(L, sprites.lantern, layout.jettyRight - 18, layout.deckY, u);
+
+      drawMooredSkiff(L, sprites, layout.rightZone + 22, layout.rightZone + 48, 190, time, u);
+      drawPost(L, layout.rightZone + 31, 188, 17, u);
+      drawScaled(L, sprites.lantern, layout.rightZone + 28, 173, u * 0.65, u);
     }
 
-    // Birds and active cast fishing line
-    creatures.drawBirds(L, sprites, scene, time, u);
+    creatures.drawBirdsAndInsects(L, sprites, scene, time, u, state.day);
     interactions.drawFishingLine(L, sprites, scene, layout, time);
 
     L.restore();
   }
 
-  /** Draws post-tint lantern glows, warm water pools, and evening sunset haze so lights shine warmly. */
-  drawPostTintGlows(
+  drawLights(
     ctx: CanvasRenderingContext2D,
+    sprites: FishingSprites,
     state: SkyState,
     scene: SceneIndex,
     layout: SceneLayout,
     time: number,
     parallaxX: number,
   ): void {
-    const u = layout.unit;
-    const shift = Math.round(parallaxX * 5.5 * u);
-
-    if (scene === 3) {
-      const spots = [
-        { x: 28, y: layout.deckY - 7 },
-        { x: layout.jettyRight - 8, y: layout.deckY - 7 },
-        { x: layout.rightZone + 36, y: 195 },
-      ];
-      const strength = 0.6 + 0.4 * (1 - state.day);
-      for (const s of spots) {
-        this.drawLanternHalo(ctx, s.x * u + shift, s.y * u, 16 * u, strength, time + s.x);
-      }
-      // Small ember glow under camp stove
-      this.drawLanternHalo(ctx, (layout.jettyRight - 58) * u + shift, (layout.deckY - 3) * u, 10 * u, 0.7, time * 1.4);
-    } else if (scene === 4) {
-      const lx = (layout.jettyRight - 18) * u + shift;
-      const ly = (layout.deckY - 6) * u;
-      const strength = Math.max(0.75, 1 - state.day * 0.4);
-      this.drawLanternHalo(ctx, lx, ly, 26 * u, strength, time);
-
-      // Warm golden light pool reflected on the water beneath the jetty end
-      const pulse = 0.88 + 0.12 * Math.sin(time * 2.1);
-      const dot = Math.max(1, Math.round(u));
-      ctx.fillStyle = `rgba(255,198,92,${(0.24 * strength * pulse).toFixed(3)})`;
-      for (let row = 0; row < 12; row++) {
-        const wy = Math.round((layout.deckY + 8 + row * 3.5) * u);
-        const halfW = Math.round((12 + row * 1.2 + Math.sin(time * 2.4 + row) * 2) * u);
-        ctx.fillRect(Math.round(lx - halfW), wy, halfW * 2, dot);
-      }
-    }
+    this.lights.draw(ctx, sprites, state, scene, layout, time, parallaxX);
   }
 
-  private drawLanternHalo(
+  /** Draws layered shore mist wisps (delegated to FishingWater). */
+  drawLayeredShoreMist(
     ctx: CanvasRenderingContext2D,
-    cx: number,
-    cy: number,
-    r: number,
-    strength: number,
-    phase: number,
+    state: SkyState,
+    scene: SceneIndex,
+    layout: SceneLayout,
+    time: number,
+    hour: number,
+    parallaxX: number,
   ): void {
-    const flicker = 0.92 + 0.08 * Math.sin(phase * 3.2);
-    const g = ctx.createRadialGradient(cx, cy, 1, cx, cy, r);
-    g.addColorStop(0, `rgba(255,228,136,${(0.55 * strength * flicker).toFixed(3)})`);
-    g.addColorStop(0.45, `rgba(255,176,72,${(0.24 * strength * flicker).toFixed(3)})`);
-    g.addColorStop(1, 'rgba(255,160,60,0)');
-    ctx.fillStyle = g;
-    ctx.fillRect(Math.round(cx - r), Math.round(cy - r), Math.round(r * 2), Math.round(r * 2));
+    this.water.drawLayeredShoreMist(ctx, state, scene, layout, time, hour, parallaxX);
   }
 
-  /** Layer 5: foreground corner reed silhouettes (clear of clock and radio). */
+  /** Layer 5: foreground corner reed silhouettes and subtle upper corner leaves (clear of clock & radio). */
   drawForeground(
     ctx: CanvasRenderingContext2D,
     sprites: FishingSprites,
@@ -437,127 +332,31 @@ export class FishingScenes {
     const shift = Math.round(parallaxX * 8.5 * u);
     const bot = this.h;
     ctx.save();
-    ctx.globalAlpha = 0.72 + 0.2 * (1 - state.day);
+    ctx.globalAlpha = 0.76 + 0.18 * (1 - state.day);
 
-    // Far bottom-left and bottom-right corner reed tufts (strictly outside 0.39w..0.62w radio zone)
     const corners = [
-      { x: 6, idx: 0 },
-      { x: 20, idx: 2 },
-      { x: layout.designW - 24, idx: 1 },
-      { x: layout.designW - 10, idx: 0 },
+      { x: 6, idx: 0, s: 1.2 },
+      { x: 20, idx: 2, s: 1.1 },
+      { x: 34, idx: 3, s: 0.95 },
+      { x: layout.designW - 36, idx: 3, s: 0.95 },
+      { x: layout.designW - 22, idx: 1, s: 1.12 },
+      { x: layout.designW - 8, idx: 0, s: 1.2 },
     ];
     for (const c of corners) {
       const sp = sprites.reeds[c.idx];
       if (!sp) continue;
       const sway = Math.round(Math.sin(time * 1.4 + c.x * 0.05) * 1.4 * u);
-      const sw = Math.round(sp.w * u * 1.15);
-      const sh = Math.round(sp.h * u * 1.15);
+      const sw = Math.round(sp.w * u * c.s);
+      const sh = Math.round(sp.h * u * c.s);
       ctx.drawImage(sp.canvas, 0, 0, sp.w, sp.h, Math.round(c.x * u - sw / 2) + shift + sway, bot - sh + Math.round(4 * u), sw, sh);
     }
+
+    ctx.fillStyle = state.day > 0.35 ? 'rgba(34,54,32,0.72)' : 'rgba(18,28,38,0.8)';
+    const leafSway = Math.round(Math.sin(time * 1.1) * u);
+    const dot = Math.max(1, Math.round(u));
+    ctx.fillRect(0, Math.round(8 * u), Math.round(22 * u) + leafSway, dot * 2);
+    ctx.fillRect(Math.round(6 * u) + leafSway, Math.round(10 * u), Math.round(10 * u), dot * 3);
+    ctx.fillRect(Math.round(18 * u) + leafSway, Math.round(7 * u), Math.round(8 * u), dot * 2);
     ctx.restore();
-  }
-
-  private drawJetty(
-    L: CanvasRenderingContext2D,
-    startX: number,
-    endX: number,
-    deckY: number,
-    u: number,
-    pilings: readonly number[],
-  ): void {
-    const sx = Math.round(startX * u);
-    const ex = Math.round(endX * u);
-    const dy = Math.round(deckY * u);
-    const w = Math.max(4, ex - sx);
-    const deckH = Math.max(3, Math.round(5 * u));
-
-    // Submerged shadow & pilings
-    for (const px of pilings) {
-      const x = Math.round(px * u);
-      const pw = Math.max(2, Math.round(4 * u));
-      const ph = Math.round(28 * u);
-      L.fillStyle = css(PILING);
-      L.fillRect(x - Math.floor(pw / 2), dy + deckH - 1, pw, ph);
-      L.fillStyle = css(PILING_SHADE);
-      L.fillRect(x, dy + deckH - 1, Math.max(1, Math.floor(pw / 2)), ph);
-      // Waterline ripple around piling
-      L.fillStyle = 'rgba(220,242,250,0.42)';
-      L.fillRect(x - pw, dy + ph - Math.round(2 * u), pw * 2, Math.max(1, Math.round(u)));
-    }
-
-    // Timber crossbeam & plank deck
-    L.fillStyle = css(PLANK_DARK);
-    L.fillRect(sx, dy + deckH - Math.max(1, Math.round(2 * u)), w, Math.max(2, Math.round(3 * u)));
-    L.fillStyle = css(PLANK_MID);
-    L.fillRect(sx, dy, w, deckH - Math.max(1, Math.round(u)));
-    L.fillStyle = css(PLANK_LIT);
-    L.fillRect(sx, dy, w, Math.max(1, Math.round(u)));
-
-    // Plank seam ticks
-    const step = Math.max(4, Math.round(7 * u));
-    L.fillStyle = css(PLANK_DARK);
-    for (let x = sx + step; x < ex - 2; x += step) {
-      L.fillRect(x, dy, Math.max(1, Math.round(u)), Math.max(2, Math.round(2.5 * u)));
-    }
-  }
-
-  private drawPost(L: CanvasRenderingContext2D, xDesign: number, baseY: number, height: number, u: number): void {
-    const x = Math.round(xDesign * u);
-    const pw = Math.max(2, Math.round(4 * u));
-    const ph = Math.round(height * u);
-    const top = Math.round(baseY * u) - ph;
-    L.fillStyle = css(PILING);
-    L.fillRect(x - Math.floor(pw / 2), top, pw, ph);
-    L.fillStyle = css(PILING_SHADE);
-    L.fillRect(x, top, Math.max(1, Math.floor(pw / 2)), ph);
-    L.fillStyle = css(PLANK_LIT);
-    L.fillRect(x - Math.floor(pw / 2), top, pw, Math.max(1, Math.round(u)));
-  }
-
-  private drawReedShallows(
-    L: CanvasRenderingContext2D,
-    sprites: FishingSprites,
-    layout: SceneLayout,
-    u: number,
-    time: number,
-  ): void {
-    // Shallow sandy shoal edge on the right and left
-    L.fillStyle = 'rgba(136,128,88,0.45)';
-    L.fillRect(Math.round((layout.rightZone + 24) * u), Math.round(202 * u), Math.round(140 * u), Math.round(26 * u));
-
-    // Floating lily pads (clear of the radio area)
-    const pads = [
-      { x: 136, y: 196, bloom: 1 },
-      { x: 158, y: 204, bloom: 0 },
-      { x: 146, y: 214, bloom: 0 },
-      { x: layout.rightZone + 10, y: 202, bloom: 1 },
-      { x: layout.rightZone + 32, y: 212, bloom: 0 },
-      { x: layout.rightZone + 56, y: 222, bloom: 1 },
-    ];
-    for (const p of pads) {
-      const sp = sprites.lilyPads[p.bloom];
-      if (!sp) continue;
-      const bob = Math.sin(time * 1.4 + p.x * 0.1) * 0.4;
-      drawBoxBottom(L, sp, p.x, p.y + bob, u);
-    }
-
-    // Swaying reed clumps along left bank & right shallows
-    const reedSpots = [
-      { x: 10, y: 208, idx: 0 },
-      { x: 24, y: 216, idx: 1 },
-      { x: 38, y: 212, idx: 2 },
-      { x: layout.rightZone + 22, y: 206, idx: 1 },
-      { x: layout.rightZone + 44, y: 216, idx: 0 },
-      { x: layout.rightZone + 66, y: 210, idx: 2 },
-      { x: layout.rightZone + 84, y: 222, idx: 1 },
-      { x: layout.rightZone + 118, y: 214, idx: 0 },
-      { x: layout.rightZone + 136, y: 220, idx: 2 },
-    ];
-    for (const r of reedSpots) {
-      const sp = sprites.reeds[r.idx];
-      if (!sp) continue;
-      const sway = Math.sin(time * 1.5 + r.x * 0.04) * 1.2;
-      drawBoxBottom(L, sp, r.x + sway, r.y, u);
-    }
   }
 }
