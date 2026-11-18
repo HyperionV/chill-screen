@@ -106,3 +106,32 @@ export function sprite(ctx: CanvasRenderingContext2D, image: HTMLCanvasElement, 
   ctx.drawImage(image, -Math.round(w / 2), -h, w, h);
   ctx.restore();
 }
+
+/** Bend a sprite above its fixed bottom rows, one pixel at a time toward the tip. */
+export function windSprite(ctx: CanvasRenderingContext2D, image: HTMLCanvasElement, x: number, y: number, size: number, sway: number, flip = false, fixedRows = 0): void {
+  const h = Math.max(1, Math.round(image.height * size));
+  const bendHeight = Math.floor(h * (image.height - fixedRows) / image.height);
+  const distance = Math.min(Math.abs(sway), Math.max(0, bendHeight - 1));
+  if (distance === 0) {
+    sprite(ctx, image, x, y, size, flip);
+    return;
+  }
+  const w = Math.max(1, Math.round(image.width * size));
+  const direction = Math.sign(sway) * (flip ? -1 : 1);
+  if (flip) {
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y));
+    ctx.scale(-1, 1);
+  }
+  const left = (flip ? 0 : Math.round(x)) - Math.round(w / 2);
+  const top = (flip ? 0 : Math.round(y)) - h;
+  let row = 0;
+  for (let offset = distance; offset >= 0; offset--) {
+    const end = offset === 0 ? h : Math.min(bendHeight - 1, Math.ceil(bendHeight * (1 - (offset - 0.5) / distance)));
+    const sourceY = image.height * row / h;
+    ctx.drawImage(image, 0, sourceY, image.width, image.height * end / h - sourceY,
+      left + direction * offset, top + row, w, end - row);
+    row = end;
+  }
+  if (flip) ctx.restore();
+}
