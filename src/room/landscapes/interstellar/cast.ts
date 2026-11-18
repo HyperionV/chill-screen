@@ -1,4 +1,5 @@
 import { clamp } from '../../../world/math';
+import { breeze } from '../../wind';
 import type { Sprite } from './sprites-base';
 import type { CraftSprites } from './sprites-craft';
 
@@ -10,6 +11,8 @@ export interface CastPoint {
 type ProbeState = 'hover' | 'move' | 'scan' | 'look' | 'spin';
 
 const PROBE_SPIN_SECONDS = 2.4;
+/** The free end of a short thruster puff can move one stage pixel. */
+const EXHAUST_BEND = 1;
 
 /** Recurring explorer probe: appears in every scene with subtle scene-specific behaviour. */
 export class ExplorerProbe {
@@ -44,8 +47,6 @@ export class ExplorerProbe {
     h: number,
     weights: Float32Array,
     pointer: CastPoint | null,
-    parallaxX: number,
-    parallaxY: number,
   ): void {
     let ax = 0;
     let ay = 0;
@@ -94,8 +95,8 @@ export class ExplorerProbe {
     this.offsetX += (this.targetOffsetX - this.offsetX) * ease;
     this.offsetY += (this.targetOffsetY - this.offsetY) * ease;
 
-    this.x = ax + this.offsetX + parallaxX;
-    this.y = ay + this.offsetY + parallaxY;
+    this.x = ax + this.offsetX;
+    this.y = ay + this.offsetY;
   }
 
   draw(ctx: CanvasRenderingContext2D, craft: CraftSprites, time: number, unit: number, alpha: number): void {
@@ -205,23 +206,26 @@ export class CargoFreighter {
     h: number,
     time: number,
     unit: number,
-    px: number,
-    py: number,
+    chapterSlide: number,
     alpha: number,
   ): void {
     if (alpha <= 0.02) return;
     const sprite = this.dir > 0 ? craft.freighterRight : craft.freighterLeft;
-    const x = Math.round(this.u * w + px - sprite.w / 2);
-    const y = Math.round((this.v + this.nudgeV) * h + py - sprite.h / 2);
+    const x = Math.round(this.u * w + chapterSlide - sprite.w / 2);
+    const y = Math.round((this.v + this.nudgeV) * h - sprite.h / 2);
 
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.drawImage(sprite.canvas, x, y);
 
-    // Warm engine plume pixel behind stern.
-    const sternX = this.dir > 0 ? x - 2 : x + sprite.w;
+    // Keep the first pixel of the engine plume at the stern.
+    const sternX = this.dir > 0 ? x - 1 : x + sprite.w;
+    const plumeY = y + Math.round(sprite.h * 0.5);
+    const plumeHeight = Math.max(1, Math.round(unit));
+    const bend = Math.round(breeze(time, sternX) * EXHAUST_BEND);
     ctx.fillStyle = `rgba(128,214,255,${(0.65 * alpha).toFixed(3)})`;
-    ctx.fillRect(sternX, y + Math.round(sprite.h * 0.5), 2, Math.max(1, Math.round(unit)));
+    ctx.fillRect(sternX, plumeY, 1, plumeHeight);
+    ctx.fillRect(sternX - this.dir, plumeY + bend, 1, plumeHeight);
 
     // Calm navigation beacons (1.8 s period).
     const pulse = 0.5 + 0.5 * Math.sin(time * 3.4);
@@ -264,13 +268,11 @@ export class TetheredAstronaut {
     w: number,
     h: number,
     pointer: CastPoint | null,
-    px: number,
-    py: number,
   ): void {
-    this.anchorX = w * 0.1 + px;
-    this.anchorY = h * 0.85 + py;
-    this.x = w * 0.23 + Math.sin(time * 0.38) * w * 0.025 + px;
-    this.y = h * 0.74 + Math.cos(time * 0.52) * h * 0.02 + py;
+    this.anchorX = w * 0.1;
+    this.anchorY = h * 0.85;
+    this.x = w * 0.23 + Math.sin(time * 0.38) * w * 0.025;
+    this.y = h * 0.74 + Math.cos(time * 0.52) * h * 0.02;
 
     if (this.waveTimer > 0) {
       this.waveTimer = Math.max(0, this.waveTimer - dt);
@@ -328,8 +330,11 @@ export class TetheredAstronaut {
 
     // Gentle thruster puff while waving.
     if (this.state === 'wave') {
+      const puffY = sy + Math.round(sprite.h * 0.42);
+      const bend = Math.round(breeze(time, sx) * EXHAUST_BEND);
       ctx.fillStyle = `rgba(184,234,255,${(0.55 * alpha).toFixed(3)})`;
-      ctx.fillRect(sx - 2, sy + Math.round(sprite.h * 0.42), 2, 2);
+      ctx.fillRect(sx - 1, puffY, 1, 2);
+      ctx.fillRect(sx - 2, puffY + bend, 1, 2);
     }
     ctx.restore();
   }
@@ -387,14 +392,13 @@ export class PatrolDrone {
     h: number,
     time: number,
     unit: number,
-    px: number,
-    py: number,
+    chapterSlide: number,
     alpha: number,
   ): void {
     if (alpha <= 0.02) return;
     const sprite = this.dir > 0 ? craft.droneRight : craft.droneLeft;
-    const cx = Math.round(this.u * w + px);
-    const cy = Math.round(this.v * h + py);
+    const cx = Math.round(this.u * w + chapterSlide);
+    const cy = Math.round(this.v * h);
     ctx.save();
     ctx.globalAlpha = alpha;
     ctx.drawImage(sprite.canvas, Math.round(cx - sprite.w / 2), Math.round(cy - sprite.h / 2));
@@ -480,8 +484,7 @@ export class DockingTraffic {
     craft: CraftSprites,
     w: number,
     h: number,
-    px: number,
-    py: number,
+    chapterSlide: number,
     alpha: number,
   ): void {
     if (alpha <= 0.02) return;
@@ -490,8 +493,8 @@ export class DockingTraffic {
     for (const s of this.shuttles) {
       if (s.u < -0.06 || s.u > 1.06) continue;
       const sprite = s.dir > 0 ? craft.shuttleRight : craft.shuttleLeft;
-      const sx = Math.round(s.u * w + px - sprite.w / 2);
-      const sy = Math.round(s.v * h + py - sprite.h / 2);
+      const sx = Math.round(s.u * w + chapterSlide - sprite.w / 2);
+      const sy = Math.round(s.v * h - sprite.h / 2);
       ctx.drawImage(sprite.canvas, sx, sy);
     }
     ctx.restore();

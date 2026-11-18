@@ -1,18 +1,20 @@
 import { css, mix, type RGB } from '../../../render/color';
 import type { Look } from '../../../wallpapers/look';
-import { approach, seededRandom } from '../../../world/math';
+import { seededRandom } from '../../../world/math';
 import { ChapterTitle } from '../../journeys/chapter-title';
 import { Route } from '../../journeys/route';
 import type { OutsideView, ViewFrame } from '../../view';
+import { gust } from '../../wind';
 import { CargoFreighter, DockingTraffic, ExplorerProbe, PatrolDrone, TetheredAstronaut } from './cast';
 import { SpaceInteractions } from './interactions';
 import {
   drawAsteroidScene,
   drawBinarySunScene,
+  drawHaze,
   drawIceAndStationScene,
   drawNebulaScene,
   drawRingedGiantScene,
-  moonCenters,
+  MOON_POSITIONS,
   type AsteroidBody,
   type SceneRenderContext,
 } from './scene-renderers';
@@ -24,6 +26,8 @@ const FAR_STARS = 135;
 const MID_STARS = 55;
 const ASTEROID_COUNT = 11;
 const FOREGROUND_PEBBLES = 5;
+/** Horizontal travel at the start or end of a chapter transition, at the design size. */
+const CHAPTER_SLIDE = 14;
 
 const STAR_TINTS: readonly RGB[] = [
   [232, 240, 255],
@@ -43,7 +47,7 @@ interface StarDot {
 
 /**
  * Interstellar: a calm deep-space window view drifting across five scenes (Ringed Giant, Nebula Nursery,
- * Asteroid Garden, Ice Moon and Station, Binary Sun) with parallax starfields, interactive comets,
+ * Asteroid Garden, Ice Moon and Station, Binary Sun) with twinkling stars, interactive comets,
  * shimmering worlds, and a recurring round white explorer probe.
  */
 export class InterstellarView implements OutsideView {
@@ -69,9 +73,6 @@ export class InterstellarView implements OutsideView {
   private midStars: StarDot[] = [];
   private asteroids: AsteroidBody[] = [];
 
-  private pxOffset = 0;
-  private pyOffset = 0;
-
   resize(w: number, h: number): void {
     this.w = Math.max(0, Math.round(w));
     this.h = Math.max(0, Math.round(h));
@@ -94,8 +95,6 @@ export class InterstellarView implements OutsideView {
     }
 
     const dominant = this.route.now.index;
-    const pMidX = this.pxOffset * 0.7;
-    const pMidY = this.pyOffset * 0.7;
 
     // 2. Scene-specific cast & station clicks.
     if (dominant === 1 && this.astronaut.contains(x, y, this.unit)) {
@@ -103,8 +102,8 @@ export class InterstellarView implements OutsideView {
       return;
     }
     if (dominant === 3) {
-      const stX = this.w * 0.79 + pMidX;
-      const stY = this.h * 0.67 + pMidY;
+      const stX = this.w * 0.79;
+      const stY = this.h * 0.67;
       if (Math.hypot(x - stX, y - stY) <= Math.max(28, 38 * this.unit)) {
         this.interactions.triggerStationFlash();
         return;
@@ -113,17 +112,17 @@ export class InterstellarView implements OutsideView {
 
     // 3. Planet and moon clicks (shimmer rings, clouds, or ice fractures).
     if (dominant === 0) {
-      const moons = moonCenters(this.w, this.h, pMidX * 0.65, pMidY * 0.65);
       const moonIds: readonly (0 | 1 | 2)[] = [0, 1, 2];
       for (const i of moonIds) {
+        const [u, v] = MOON_POSITIONS[i];
         const hitR = Math.max(10, (12 - i * 2) * this.unit);
-        if (Math.hypot(x - moons[i][0], y - moons[i][1]) <= hitR) {
+        if (Math.hypot(x - u * this.w, y - v * this.h) <= hitR) {
           this.interactions.triggerMoonShimmer(i);
           return;
         }
       }
-      const gx = this.w * 0.8 + pMidX;
-      const gy = this.h * 0.75 + pMidY;
+      const gx = this.w * 0.8;
+      const gy = this.h * 0.75;
       const dx = x - gx;
       const dy = y - gy;
       const inBody = Math.hypot(dx, dy) <= 52 * this.unit;
@@ -134,8 +133,8 @@ export class InterstellarView implements OutsideView {
       }
     }
     if (dominant === 3) {
-      const ix = this.w * 0.21 + pMidX;
-      const iy = this.h * 0.77 + pMidY;
+      const ix = this.w * 0.21;
+      const iy = this.h * 0.77;
       if (Math.hypot(x - ix, y - iy) <= 46 * this.unit) {
         this.interactions.triggerIceMoonShimmer();
         return;
@@ -157,42 +156,38 @@ export class InterstellarView implements OutsideView {
     blendSceneStyle(this.weights, this.style);
     this.updateLook();
 
-    const targetPx = frame.pointer ? (frame.pointer.x / this.w - 0.5) * -14 * this.unit : 0;
-    const targetPy = frame.pointer ? (frame.pointer.y / this.h - 0.5) * -9 * this.unit : 0;
-    this.pxOffset = approach(this.pxOffset, targetPx, 2.8, dt);
-    this.pyOffset = approach(this.pyOffset, targetPy, 2.8, dt);
-
-    this.interactions.update(dt, this.w, this.h, this.unit, frame.pointer);
+    const windStrength = gust(frame.time);
+    this.interactions.update(dt, this.w, this.h, this.unit, frame.pointer, windStrength);
     if (this.weights[0] > 0.01) this.freighter.update(dt, this.w, this.h, frame.pointer);
     if (this.weights[1] > 0.01) {
-      this.astronaut.update(dt, frame.time, this.w, this.h, frame.pointer, this.pxOffset, this.pyOffset);
+      this.astronaut.update(dt, frame.time, this.w, this.h, frame.pointer);
     }
     if (this.weights[2] > 0.01) this.drone.update(dt, this.w, this.h, frame.pointer);
     if (this.weights[3] > 0.01) this.docking.update(dt);
-    this.probe.update(dt, frame.time, this.w, this.h, this.weights, frame.pointer, this.pxOffset, this.pyOffset);
+    this.probe.update(dt, frame.time, this.w, this.h, this.weights, frame.pointer);
 
-    // Layer 1: Deep space backdrop & cosmic haze (0.08x parallax).
-    this.drawBackdrop(ctx, frame.time);
+    // Layer 1: Deep space backdrop and cosmic haze.
+    this.drawBackdrop(ctx, frame.time, windStrength);
 
-    // Layer 2 & 3: Far and mid-far starfields (0.24x and 0.45x parallax).
-    this.drawStars(ctx, this.farStars, 0.24, frame.time, false);
-    this.drawStars(ctx, this.midStars, 0.45, frame.time, true);
+    // Layers 2 and 3: Far and mid-far starfields.
+    this.drawStars(ctx, this.farStars, frame.time, false);
+    this.drawStars(ctx, this.midStars, frame.time, true);
 
     // Layer 4 & 5: Scene-specific celestial worlds and cast, cross-dissolved smoothly.
     for (let i = 0; i < CHAPTERS.length; i++) {
       const wScene = this.weights[i];
       if (wScene <= 0.01) continue;
-      const slide = wScene < 0.99 ? (i === now.index ? -(1 - wScene) : 1 - wScene) * 14 * this.unit : 0;
+      const chapterSlide = wScene < 0.99
+        ? (i === now.index ? -1 : 1) * (1 - wScene) * CHAPTER_SLIDE * this.unit
+        : 0;
       const rc: SceneRenderContext = {
         w: this.w,
         h: this.h,
         unit: this.unit,
         time: frame.time,
         alpha: wScene,
-        pxMid: this.pxOffset * 0.7 + slide,
-        pyMid: this.pyOffset * 0.7,
-        pxNear: this.pxOffset + slide,
-        pyNear: this.pyOffset,
+        chapterSlide,
+        windStrength,
         sprites: this.sprites,
         interactions: this.interactions,
         freighter: this.freighter,
@@ -211,8 +206,8 @@ export class InterstellarView implements OutsideView {
     // Recurring explorer probe on top of scene worlds (Layer 5).
     this.probe.draw(ctx, this.sprites.craft, frame.time, this.unit, 1);
 
-    // Layer 6: Foreground stardust, micrometeoroids, comets (1.32x parallax).
-    this.interactions.stardust.draw(ctx, this.style.tint, this.pxOffset * 1.32, this.pyOffset * 1.32);
+    // Layer 6: Foreground stardust, micrometeoroids, and comets.
+    this.interactions.stardust.draw(ctx, this.style.tint);
     this.drawForegroundMotes(ctx, frame.time);
     this.interactions.drawComets(ctx, this.unit);
 
@@ -288,45 +283,31 @@ export class InterstellarView implements OutsideView {
     }));
   }
 
-  private drawBackdrop(ctx: CanvasRenderingContext2D, time: number): void {
+  private drawBackdrop(ctx: CanvasRenderingContext2D, time: number, windStrength: number): void {
     const g = ctx.createLinearGradient(0, 0, 0, this.h);
     g.addColorStop(0, css(this.style.spaceTop));
     g.addColorStop(1, css(this.style.spaceBottom));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, this.w, this.h);
 
-    const px = this.pxOffset * 0.08;
-    const py = this.pyOffset * 0.08;
-    const drawCloud = (cx: number, cy: number, r: number, color: RGB, alpha: number) => {
-      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-      grad.addColorStop(0, css(color, alpha));
-      grad.addColorStop(1, css(color, 0));
-      ctx.fillStyle = grad;
-      ctx.fillRect(Math.round(cx - r), Math.round(cy - r), Math.round(r * 2), Math.round(r * 2));
-    };
-
-    const sway = Math.sin(time * 0.07) * 6 * this.unit;
-    drawCloud(this.w * 0.2 + px + sway, this.h * 0.2 + py, this.w * 0.32, this.style.hazeA, 0.24);
-    drawCloud(this.w * 0.8 + px - sway, this.h * 0.74 + py, this.w * 0.36, this.style.hazeB, 0.22);
+    drawHaze(ctx, this.w * 0.2, this.h * 0.2, this.w * 0.32, this.style.hazeA, 0.24, time, windStrength);
+    drawHaze(ctx, this.w * 0.8, this.h * 0.74, this.w * 0.36, this.style.hazeB, 0.22, time, windStrength);
   }
 
   private drawStars(
     ctx: CanvasRenderingContext2D,
     stars: StarDot[],
-    parallaxFactor: number,
     time: number,
     allowCross: boolean,
   ): void {
-    const px = this.pxOffset * parallaxFactor;
-    const py = this.pyOffset * parallaxFactor;
     const bhWeight = this.weights[4];
-    const bhX = this.w * 0.79 + this.pxOffset * 0.7;
-    const bhY = this.h * 0.72 + this.pyOffset * 0.7;
+    const bhX = this.w * 0.79;
+    const bhY = this.h * 0.72;
     const lensRadius = 46 * this.unit;
 
     for (const s of stars) {
-      let sx = (((s.u * this.w + px) % this.w) + this.w) % this.w;
-      let sy = (((s.v * this.h + py) % this.h) + this.h) % this.h;
+      let sx = s.u * this.w;
+      let sy = s.v * this.h;
 
       // Gravitational lensing around Scene 5's black hole bends background starlight radially.
       if (bhWeight > 0.05) {
@@ -359,12 +340,10 @@ export class InterstellarView implements OutsideView {
   }
 
   private drawForegroundMotes(ctx: CanvasRenderingContext2D, time: number): void {
-    const px = this.pxOffset * 1.32;
-    const py = this.pyOffset * 1.32;
     ctx.fillStyle = css(mix(this.style.tint, [200, 210, 230], 0.4), 0.45);
     for (let i = 0; i < FOREGROUND_PEBBLES; i++) {
-      const mx = Math.round((((i * 0.23 + time * 0.015 * (i % 2 === 0 ? 1 : 0.7)) % 1.1) - 0.05) * this.w + px);
-      const my = Math.round(this.h * (i < 2 ? 0.14 + i * 0.08 : 0.65 + (i - 2) * 0.09) + py);
+      const mx = Math.round((((i * 0.23 + time * 0.015 * (i % 2 === 0 ? 1 : 0.7)) % 1.1) - 0.05) * this.w);
+      const my = Math.round(this.h * (i < 2 ? 0.14 + i * 0.08 : 0.65 + (i - 2) * 0.09));
       if (mx > this.w * 0.38 && mx < this.w * 0.63 && my > this.h * 0.72) continue;
       ctx.fillRect(mx, my, 2, 1);
     }

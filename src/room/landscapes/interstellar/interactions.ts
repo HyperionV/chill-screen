@@ -7,6 +7,9 @@ const MAX_COMETS = 6;
 const COMET_DURATION = 2.6;
 const SHIMMER_SECONDS = 1.6;
 const STATION_FLASH_SECONDS = 2.0;
+/** Leftward dust drift in pixels per second at the design size. */
+const DUST_DRIFT_CALM = 2.2;
+const DUST_DRIFT_GUST = 3.8;
 
 interface DustMote {
   x: number;
@@ -31,7 +34,9 @@ interface Comet {
 /** Ambient cosmic stardust that gently streams away from a moving pointer. */
 export class StardustField {
   private readonly motes: DustMote[] = [];
-  private lastPointer: CastPoint | null = null;
+  private lastPointerX = 0;
+  private lastPointerY = 0;
+  private hadPointer = false;
   private cursor = 0;
 
   resize(w: number, h: number): void {
@@ -51,12 +56,13 @@ export class StardustField {
     }
   }
 
-  update(dt: number, w: number, h: number, unit: number, pointer: CastPoint | null): void {
+  update(dt: number, w: number, h: number, unit: number, pointer: CastPoint | null, windStrength: number): void {
     const pushRadius = 46 * unit;
-    if (pointer && this.lastPointer) {
-      const moved = Math.hypot(pointer.x - this.lastPointer.x, pointer.y - this.lastPointer.y);
-      if (moved > 1.2 * unit) {
-        const angle = Math.atan2(pointer.y - this.lastPointer.y, pointer.x - this.lastPointer.x) + (Math.random() - 0.5) * 1.4;
+    if (pointer) {
+      const dx = pointer.x - this.lastPointerX;
+      const dy = pointer.y - this.lastPointerY;
+      if (this.hadPointer && Math.hypot(dx, dy) > 1.2 * unit) {
+        const angle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 1.4;
         const speed = (16 + Math.random() * 16) * unit;
         const m = this.motes[this.cursor];
         this.cursor = (this.cursor + 1) % this.motes.length;
@@ -67,9 +73,13 @@ export class StardustField {
         m.life = 0;
         m.maxLife = 1.6 + Math.random() * 1.2;
       }
+      this.lastPointerX = pointer.x;
+      this.lastPointerY = pointer.y;
     }
-    this.lastPointer = pointer ? { x: pointer.x, y: pointer.y } : null;
+    this.hadPointer = pointer !== null;
 
+    const drift = (DUST_DRIFT_CALM + (DUST_DRIFT_GUST - DUST_DRIFT_CALM) * windStrength) * unit;
+    const damping = Math.exp(-1.5 * dt);
     for (const m of this.motes) {
       if (pointer) {
         const dx = m.x - pointer.x;
@@ -83,9 +93,9 @@ export class StardustField {
       }
 
       // Gentle ambient cosmic drift + velocity damping.
-      m.vx *= Math.exp(-1.5 * dt);
-      m.vy *= Math.exp(-1.5 * dt);
-      m.x += (m.vx - 2.2 * unit) * dt;
+      m.vx *= damping;
+      m.vy *= damping;
+      m.x += (m.vx - drift) * dt;
       m.y += m.vy * dt;
       m.life += dt;
 
@@ -100,12 +110,12 @@ export class StardustField {
     }
   }
 
-  draw(ctx: CanvasRenderingContext2D, tint: RGB, px: number, py: number): void {
+  draw(ctx: CanvasRenderingContext2D, tint: RGB): void {
     for (const m of this.motes) {
       const fade = Math.sin(Math.PI * Math.min(1, m.life / m.maxLife));
       if (fade < 0.08) continue;
-      const x = Math.round(m.x + px);
-      const y = Math.round(m.y + py);
+      const x = Math.round(m.x);
+      const y = Math.round(m.y);
       const c: RGB = m.warm
         ? [Math.min(255, tint[0] + 150), Math.min(255, tint[1] + 135), Math.min(255, tint[2] + 95)]
         : [Math.min(255, tint[0] + 115), Math.min(255, tint[1] + 155), Math.min(255, tint[2] + 175)];
@@ -166,8 +176,8 @@ export class SpaceInteractions {
     this.stationFlash = STATION_FLASH_SECONDS;
   }
 
-  update(dt: number, w: number, h: number, unit: number, pointer: CastPoint | null): void {
-    this.stardust.update(dt, w, h, unit, pointer);
+  update(dt: number, w: number, h: number, unit: number, pointer: CastPoint | null, windStrength: number): void {
+    this.stardust.update(dt, w, h, unit, pointer, windStrength);
     this.giantShimmer = Math.max(0, this.giantShimmer - dt);
     this.iceMoonShimmer = Math.max(0, this.iceMoonShimmer - dt);
     this.stationFlash = Math.max(0, this.stationFlash - dt);
