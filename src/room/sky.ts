@@ -4,6 +4,7 @@ import { clamp, seededRandom } from '../world/math';
 import type { Look } from '../wallpapers/look';
 import type { NightSky } from './night-sky';
 import type { ViewFrame } from './view';
+import { gust } from './wind';
 
 /** Colours of sky, water and light through the day; the hour between two entries blends them. */
 export interface SkyKey {
@@ -29,7 +30,14 @@ const KEYS: (SkyKey & { hour: number })[] = [
 ];
 
 const WHITE: RGB = [255, 255, 255];
-const CLOUDS = 6;
+const CLOUDS = 9;
+/** Different cloud shapes; each cloud slowly trades its outline with the next shape so it never sits still. */
+const CLOUD_SHAPES = 6;
+/** How far a cloud drifts in stage pixels a second at the calmest and at the peak of a gust. */
+const CLOUD_DRIFT_CALM = 1.8;
+const CLOUD_DRIFT_GUST = 2.6;
+/** How much of the next shape shows through at most, so the outline changes without turning to fog. */
+const CLOUD_MORPH_MAX = 0.55;
 /** The view is designed for about 270 rows; lengths scale with the real row count. */
 const DESIGN_ROWS = 270;
 
@@ -81,7 +89,11 @@ interface Cloud {
   x: number;
   v: number;
   size: number;
+  /** Stage pixels a second at the calmest wind; nearer, bigger clouds move faster, which gives depth. */
   speed: number;
+  /** Speed of the slow shape change and breathing, and where in them this cloud starts. */
+  morph: number;
+  phase: number;
 }
 
 /**
@@ -101,7 +113,8 @@ export class SkyDome {
     const rnd = seededRandom(7);
     for (let i = 0; i < CLOUDS; i++) {
       const v = 0.06 + rnd() * 0.3;
-      this.clouds.push({ sprite: i % 4, x: rnd(), v, size: 1.25 - v * 1.4 + rnd() * 0.2, speed: 0.004 + rnd() * 0.006 });
+      const size = 1.25 - v * 1.4 + rnd() * 0.2;
+      this.clouds.push({ sprite: i % CLOUD_SHAPES, x: rnd(), v, size, speed: 0.55 + size * 0.9 + rnd() * 0.5, morph: 0.05 + rnd() * 0.06, phase: rnd() * Math.PI * 2 });
     }
   }
 
@@ -128,7 +141,7 @@ export class SkyDome {
     this.nightSky.draw(ctx, look, (u, v) => [u * this.w, v * this.h], 1, frame.time);
     this.nightSky.drawMeteors(ctx, frame.dt, look.night, this.w, this.h * this.horizon);
     this.drawBodies(ctx, state);
-    this.drawClouds(ctx, frame.dt, state);
+    this.drawClouds(ctx, frame.dt, frame.time, state);
   }
 
   private drawGradient(ctx: CanvasRenderingContext2D, { sky, sun, day }: SkyState): void {
@@ -187,22 +200,31 @@ export class SkyDome {
     ctx.restore();
   }
 
-  private drawClouds(ctx: CanvasRenderingContext2D, dt: number, { sky, day }: SkyState): void {
+  private drawClouds(ctx: CanvasRenderingContext2D, dt: number, time: number, { sky, day }: SkyState): void {
     const lit = mix(mix(sky.light, WHITE, 0.5 * day), [44, 50, 80], (1 - day) * 0.85);
     const shadow = shade(mix(sky.zenith, sky.horizon, 0.55), 0.82 + 0.1 * day);
     const key = [...lit, ...shadow].map((v) => Math.round(v / 12)).join(',');
     if (key !== this.cloudKey) {
       this.cloudKey = key;
-      this.cloudSprites = [0, 1, 2, 3].map((seed) => cloudSprite(seed, lit, shadow, this.unit));
+      this.cloudSprites = Array.from({ length: CLOUD_SHAPES }, (_, seed) => cloudSprite(seed, lit, shadow, this.unit));
     }
+    const wind = CLOUD_DRIFT_CALM + (CLOUD_DRIFT_GUST - CLOUD_DRIFT_CALM) * gust(time);
     for (const c of this.clouds) {
-      c.x += c.speed * dt * 0.1;
       const sprite = this.cloudSprites[c.sprite];
-      const cw = Math.round(sprite.width * c.size);
-      const ch = Math.round(sprite.height * c.size);
+      const wave = Math.sin(time * c.morph + c.phase);
+      // The cloud breathes a little and bobs on the air, so it changes shape as it drifts.
+      const size = c.size * (1 + 0.05 * wave);
+      const cw = Math.round(sprite.width * size);
+      const ch = Math.round(sprite.height * size);
       const span = this.w + cw * 2;
-      const x = Math.round(((c.x * span) % span) - cw);
-      ctx.drawImage(sprite, x, Math.round(c.v * this.h - ch / 2), cw, ch);
+      c.x = (c.x + (c.speed * wind * this.unit * dt) / span) % 1;
+      const x = Math.round(c.x * span - cw);
+      const y = Math.round(c.v * this.h - ch / 2 + Math.sin(time * 0.3 + c.phase) * this.unit);
+      ctx.drawImage(sprite, x, y, cw, ch);
+      const partner = this.cloudSprites[(c.sprite + 1) % CLOUD_SHAPES];
+      ctx.globalAlpha = CLOUD_MORPH_MAX * (0.5 + 0.5 * Math.sin(time * c.morph * 0.7 + c.phase * 1.7));
+      ctx.drawImage(partner, x, y, cw, ch);
+      ctx.globalAlpha = 1;
     }
   }
 }
