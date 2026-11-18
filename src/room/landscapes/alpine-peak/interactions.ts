@@ -1,7 +1,7 @@
 import { css, mix } from '../../../render/color';
 import { approach, clamp, lerp, rand } from '../../../world/math';
 import type { SkyState } from '../../sky';
-import type { ViewFrame } from '../../view';
+import { breeze, gust } from '../../wind';
 import { CloudSea } from './cloud-sea';
 import { buildExtraStars, buildMilkyWayCanvas } from './milky-way';
 import { ALPINE_COLORS, SCENE_ANCHORS, isSnowSurface, sceneTerrainY, slopeDirection } from './scenes';
@@ -51,14 +51,36 @@ const MAX_AVALANCHE_MOTES = 96;
 const MAX_SMOKE_RINGS = 6;
 const HUT_LIT_DURATION = 22;
 const BUNTING_COLORS: readonly string[] = ['#e65242', '#eab042', '#4498d8', '#46b88e', '#f2eee4'];
+// Flag tips lift in stages, with the cloth at the pole held in place.
+const SUMMIT_FLAG_SWAY = 3;
+const STATION_FLAG_SWAY = 2;
+const BUNTING_TIP_SWAY = 2;
+const FLAG_WAVE_DELAY = 0.085;
+const FLAG_CALM_LENGTH = 0.85;
+const FLAG_GUST_LENGTH = 1.1;
+// The existing crest plumes are denser than the windblown grains by the foreground banks.
+const CREST_SNOW_RATE = 16;
+const CREST_SNOW_CALM_RATE = 0.65;
+const SHELTERED_SNOW_RATE = 3;
+const SHELTERED_SNOW_LEFT_U = 0.08;
+const SHELTERED_SNOW_RIGHT_U = 0.88;
+const SHELTERED_SNOW_V = 0.87;
+const CREST_SNOW_SPEED = 42;
+const SHELTERED_SNOW_SPEED = 18;
+const SNOW_CALM_SPEED = 0.3;
+const CLICK_SNOW_WIND_SPEED = 4;
+// Chimney smoke keeps rising as the breeze draws it sideways.
+const SMOKE_CALM_SPEED = 2;
+const SMOKE_GUST_SPEED = 5;
 
 /**
- * Handles Alpine Peak's dynamic atmosphere and pointer/click interactions:
- * parting cloud sea, wind-streaming snow plumes & flags, avalanches, hut window & smoke rings, and Milky Way.
+ * Handles Alpine Peak's clouds, wind-streaming snow and flags, avalanches, hut lighting, and night sky effects.
  */
 export class AlpineInteractions {
   private readonly cloudSea = new CloudSea();
-  private readonly plumes: PlumeParticle[] = [];
+  private readonly plumes: PlumeParticle[] = Array.from({ length: MAX_PLUME_MOTES }, () => ({
+    x: 0, y: 0, vx: 0, vy: 0, age: 0, life: 0, size: 1,
+  }));
   private readonly avalanche: AvalancheMote[] = [];
   private readonly smokeRings: SmokeRing[] = [];
   private readonly extraStars = buildExtraStars();
@@ -68,15 +90,13 @@ export class AlpineInteractions {
   private meteor: StarryMeteor | null = null;
   private meteorWait = 6.5;
 
-  private windBias = 0.55;
+  private gustStrength = 0;
   private hutLitTimer = 0;
   private lastHutRect: { x: number; y: number; w: number; h: number; chimX: number; chimY: number } | null = null;
   private plumeSpawnAcc = 0;
-
-  /** Effective wind direction & strength (-1..+1), reacting promptly when the pointer moves. */
-  get wind(): number {
-    return this.windBias;
-  }
+  private nextPlume = 0;
+  private plumeColorKey = -1;
+  private plumeFill = '';
 
   /** Rebuilds the cached pixel-dithered Milky Way band when stage dimensions change. */
   resize(w: number, h: number): void {
@@ -88,7 +108,7 @@ export class AlpineInteractions {
     }
   }
 
-  /** Updates wind bias, cloud-sea parting, plumes, avalanches, hut lights, and smoke rings. */
+  /** Updates drifting clouds, plumes, avalanches, hut lights, and smoke rings. */
   update(
     dt: number,
     time: number,
@@ -96,23 +116,14 @@ export class AlpineInteractions {
     w: number,
     h: number,
     unit: number,
-    pointer: ViewFrame['pointer'],
   ): void {
-    let targetWind = 0.52 + Math.sin(time * 0.35) * 0.14;
-    if (pointer) {
-      const anchorU = scene === 0 ? SCENE_ANCHORS.summitPole.u : scene === 3 ? SCENE_ANCHORS.cableStation.u : 0.35;
-      const anchorX = anchorU * w;
-      const dx = anchorX - pointer.x;
-      const prox = clamp(1 - Math.abs(dx) / (w * 0.55), 0.25, 1);
-      targetWind = (dx >= 0 ? 1 : -1) * (0.65 + 0.35 * prox);
-    }
-    this.windBias = approach(this.windBias, targetWind, 6.5, dt);
+    this.gustStrength = gust(time);
 
     if (this.hutLitTimer > 0) {
       this.hutLitTimer = Math.max(0, this.hutLitTimer - dt);
     }
 
-    this.cloudSea.update(dt, scene, w, h, unit, pointer);
+    this.cloudSea.update(dt, this.gustStrength);
     this.stepPlumes(dt, scene, w, h, unit);
     this.stepAvalanche(dt, unit);
     this.stepSmokeRings(dt, unit);
@@ -131,7 +142,7 @@ export class AlpineInteractions {
     this.smokeRings.push({
       x: r.chimX,
       y: r.chimY,
-      vx: this.windBias * 4 * unit,
+      vx: (SMOKE_CALM_SPEED + SMOKE_GUST_SPEED * this.gustStrength) * unit,
       vy: -13 * unit,
       age: 0,
       life: 3.6,
@@ -153,7 +164,7 @@ export class AlpineInteractions {
       this.avalanche.push({
         x: x + rand(-7, 7) * unit,
         y: y + rand(-3, 3) * unit,
-        vx: dir * rand(10, 26) * unit + this.windBias * 4 * unit,
+        vx: dir * rand(10, 26) * unit + this.gustStrength * CLICK_SNOW_WIND_SPEED * unit,
         vy: rand(6, 18) * unit,
         age: 0,
         life: rand(1.6, 2.5),
@@ -240,10 +251,9 @@ export class AlpineInteractions {
     unit: number,
     hour: number,
     state: SkyState,
-    parX: number,
-    parY: number,
+    time: number,
   ): void {
-    this.cloudSea.draw(L, scene, layer, w, h, unit, hour, state, parX, parY);
+    this.cloudSea.draw(L, scene, layer, w, h, unit, hour, state, time, this.gustStrength);
   }
 
   /** Draws summit flags, bunting, snow plumes, and gentle avalanches on the land layer. */
@@ -255,14 +265,12 @@ export class AlpineInteractions {
     unit: number,
     time: number,
     state: SkyState,
-    parX: number,
-    parY: number,
     hut: HutSprite | null,
   ): void {
     if ((scene === 1 || scene === 4) && hut) {
       const anchor = scene === 1 ? SCENE_ANCHORS.glacierHut : SCENE_ANCHORS.starryHut;
-      const hx = Math.round(anchor.u * w - hut.w / 2 + parX);
-      const hy = Math.round(anchor.v * h - hut.h + 4 + parY);
+      const hx = Math.round(anchor.u * w - hut.w / 2);
+      const hy = Math.round(anchor.v * h - hut.h + 4);
       this.lastHutRect = {
         x: hx,
         y: hy,
@@ -276,19 +284,31 @@ export class AlpineInteractions {
     }
 
     if (scene === 0) {
-      this.drawSummitFlagAndBunting(L, w, h, unit, time, parX, parY);
+      this.drawSummitFlagAndBunting(L, w, h, unit, time);
     } else if (scene === 3) {
-      this.drawStationFlag(L, w, h, unit, time, parX, parY);
+      this.drawStationFlag(L, w, h, unit, time);
     }
 
-    if (this.plumes.length > 0) {
-      const col = mix(ALPINE_COLORS.snowLit, state.sky.light, 0.25 * state.day);
-      for (const p of this.plumes) {
-        const fade = Math.sin(Math.PI * clamp(p.age / p.life, 0, 1));
-        L.fillStyle = css(col, 0.72 * fade);
-        L.fillRect(Math.round(p.x), Math.round(p.y), p.size, 1);
-      }
+    const snow = ALPINE_COLORS.snowLit;
+    const light = state.sky.light;
+    const tint = 0.25 * state.day;
+    const red = lerp(snow[0], light[0], tint) | 0;
+    const green = lerp(snow[1], light[1], tint) | 0;
+    const blue = lerp(snow[2], light[2], tint) | 0;
+    const colorKey = (red << 16) | (green << 8) | blue;
+    if (this.plumeColorKey !== colorKey) {
+      this.plumeColorKey = colorKey;
+      this.plumeFill = `rgb(${red},${green},${blue})`;
     }
+    L.save();
+    L.fillStyle = this.plumeFill;
+    for (const p of this.plumes) {
+      if (p.age >= p.life) continue;
+      const fade = Math.sin(Math.PI * (p.age / p.life));
+      L.globalAlpha = 0.72 * fade;
+      L.fillRect(Math.round(p.x), Math.round(p.y), p.size, 1);
+    }
+    L.restore();
 
     if (this.avalanche.length > 0) {
       const dustCol = mix(ALPINE_COLORS.snowLit, state.sky.light, 0.2 * state.day);
@@ -308,8 +328,6 @@ export class AlpineInteractions {
     w: number,
     h: number,
     day: number,
-    parX: number,
-    parY: number,
     hut: HutSprite,
     tentGlow: { canvas: HTMLCanvasElement; w: number; h: number },
   ): void {
@@ -331,8 +349,8 @@ export class AlpineInteractions {
 
     if (scene === 4 && day < 0.72) {
       const strength = clamp((0.72 - day) / 0.45, 0.2, 1);
-      const tx = Math.round(SCENE_ANCHORS.starryTent.u * w - 18 + parX);
-      const ty = Math.round(SCENE_ANCHORS.starryTent.v * h - 22 + 4 + parY);
+      const tx = Math.round(SCENE_ANCHORS.starryTent.u * w - 18);
+      const ty = Math.round(SCENE_ANCHORS.starryTent.v * h - 22 + 4);
       ctx.save();
       ctx.globalAlpha = strength * 0.92;
       ctx.drawImage(tentGlow.canvas, tx + 11, ty + 9);
@@ -361,29 +379,25 @@ export class AlpineInteractions {
     h: number,
     unit: number,
     time: number,
-    parX: number,
-    parY: number,
   ): void {
-    const px = Math.round(SCENE_ANCHORS.summitPole.u * w + parX);
-    const py = Math.round(sceneTerrainY(0, SCENE_ANCHORS.summitPole.u) * h + parY) + 1;
+    const px = Math.round(SCENE_ANCHORS.summitPole.u * w);
+    const py = Math.round(sceneTerrainY(0, SCENE_ANCHORS.summitPole.u) * h) + 1;
     const poleH = Math.round(24 * unit);
     const topY = py - poleH;
 
     L.fillStyle = '#5c422c';
     L.fillRect(px, topY, 1, poleH);
 
-    const dir = this.windBias >= 0 ? 1 : -1;
-    const stream = clamp(Math.abs(this.windBias), 0.35, 1);
-    const flagLen = Math.round(11 * unit * (0.75 + 0.35 * stream));
+    const flagLen = Math.round(11 * unit * lerp(FLAG_CALM_LENGTH, FLAG_GUST_LENGTH, this.gustStrength));
     for (let i = 0; i < flagLen; i++) {
-      const wave = Math.round(Math.sin(time * 7.5 - i * 0.55) * (0.6 + (i / flagLen) * 1.1));
+      const wave = Math.round(breeze(time - i * FLAG_WAVE_DELAY, px) * SUMMIT_FLAG_SWAY * (i / flagLen));
       const fh = Math.max(2, Math.round(6 * unit * (1 - (i / flagLen) * 0.45)));
       L.fillStyle = i % 4 < 2 ? '#e65242' : '#c83428';
-      L.fillRect(px + dir * (1 + i), topY + 1 + wave, 1, fh);
+      L.fillRect(px + 1 + i, topY + 1 + wave, 1, fh);
     }
 
-    const bx = Math.round(SCENE_ANCHORS.buntingEnd.u * w + parX);
-    const by = Math.round(sceneTerrainY(0, SCENE_ANCHORS.buntingEnd.u) * h + parY);
+    const bx = Math.round(SCENE_ANCHORS.buntingEnd.u * w);
+    const by = Math.round(sceneTerrainY(0, SCENE_ANCHORS.buntingEnd.u) * h);
     L.fillStyle = '#485266';
     L.fillRect(bx, by - 5, 1, 6);
     L.fillStyle = '#c8d4e6';
@@ -404,7 +418,7 @@ export class AlpineInteractions {
       const t = f / (flags + 1);
       const fx = Math.round(lerp(px, bx, t));
       const fy = Math.round(lerp(startY, endY, t) + Math.sin(Math.PI * t) * 5 * unit);
-      const sway = Math.round(dir * (1.2 + Math.sin(time * 6.5 + f * 1.3) * 0.8) * stream);
+      const sway = Math.round(breeze(time, fx) * BUNTING_TIP_SWAY);
       L.fillStyle = BUNTING_COLORS[f % BUNTING_COLORS.length];
       L.fillRect(fx - 1, fy + 1, 3, 2);
       L.fillRect(fx + sway, fy + 3, 2, 1);
@@ -417,51 +431,48 @@ export class AlpineInteractions {
     h: number,
     unit: number,
     time: number,
-    parX: number,
-    parY: number,
   ): void {
-    const stX = Math.round(SCENE_ANCHORS.cableStation.u * w + parX);
-    const stY = Math.round(SCENE_ANCHORS.cableStation.v * h + parY);
+    const stX = Math.round(SCENE_ANCHORS.cableStation.u * w);
+    const stY = Math.round(SCENE_ANCHORS.cableStation.v * h);
     const poleX = stX + 3;
     const poleTop = stY - 40;
-    const dir = this.windBias >= 0 ? 1 : -1;
-    const len = Math.round(10 * unit);
+    const len = Math.round(10 * unit * lerp(FLAG_CALM_LENGTH, FLAG_GUST_LENGTH, this.gustStrength));
     for (let i = 0; i < len; i++) {
-      const wave = Math.round(Math.sin(time * 6.8 - i * 0.5) * (0.4 + (i / len) * 0.9));
+      const wave = Math.round(breeze(time - i * FLAG_WAVE_DELAY, poleX) * STATION_FLAG_SWAY * (i / len));
       L.fillStyle = i > len * 0.3 && i < len * 0.7 ? '#f4f6fa' : '#d63e34';
-      L.fillRect(poleX + dir * (1 + i), poleTop + wave, 1, 4);
+      L.fillRect(poleX + 1 + i, poleTop + wave, 1, 4);
     }
   }
 
   private stepPlumes(dt: number, scene: number, w: number, h: number, unit: number): void {
-    if (scene === 0 || scene === 2) {
-      this.plumeSpawnAcc += dt * 16;
-      const originU = scene === 0 ? 0.205 : 0.25;
-      const ox = originU * w;
-      const oy = sceneTerrainY(scene, originU) * h + 1;
-      while (this.plumeSpawnAcc >= 1) {
-        this.plumeSpawnAcc -= 1;
-        if (this.plumes.length >= MAX_PLUME_MOTES) this.plumes.shift();
-        this.plumes.push({
-          x: ox + rand(-4, 4) * unit,
-          y: oy + rand(-2, 2) * unit,
-          vx: this.windBias * rand(28, 52) * unit,
-          vy: rand(-6, 4) * unit,
-          age: 0,
-          life: rand(0.9, 1.8),
-          size: Math.random() < 0.45 ? 2 : 1,
-        });
-      }
+    const onCrest = scene === 0 || scene === 2;
+    const spawnRate = onCrest
+      ? CREST_SNOW_RATE * lerp(CREST_SNOW_CALM_RATE, 1, this.gustStrength)
+      : SHELTERED_SNOW_RATE * this.gustStrength;
+    this.plumeSpawnAcc += dt * spawnRate;
+    const topSpeed = onCrest ? CREST_SNOW_SPEED : SHELTERED_SNOW_SPEED;
+    const speed = topSpeed * lerp(SNOW_CALM_SPEED, 1, this.gustStrength) * unit;
+    while (this.plumeSpawnAcc >= 1) {
+      this.plumeSpawnAcc -= 1;
+      const originU = onCrest
+        ? (scene === 0 ? 0.205 : 0.25)
+        : (Math.random() < 0.5 ? SHELTERED_SNOW_LEFT_U : SHELTERED_SNOW_RIGHT_U);
+      const originV = onCrest ? sceneTerrainY(scene, originU) : SHELTERED_SNOW_V;
+      const p = this.plumes[this.nextPlume];
+      this.nextPlume = (this.nextPlume + 1) % MAX_PLUME_MOTES;
+      p.x = originU * w + rand(-4, 4) * unit;
+      p.y = originV * h + 1 + rand(-2, 2) * unit;
+      p.vx = speed * rand(0.7, 1.2);
+      p.vy = rand(-6, 4) * unit;
+      p.age = 0;
+      p.life = rand(0.9, 1.8);
+      p.size = onCrest && Math.random() < 0.45 ? 2 : 1;
     }
 
-    for (let i = this.plumes.length - 1; i >= 0; i--) {
-      const p = this.plumes[i];
+    for (const p of this.plumes) {
+      if (p.age >= p.life) continue;
       p.age += dt;
-      if (p.age >= p.life) {
-        this.plumes.splice(i, 1);
-        continue;
-      }
-      p.vx = approach(p.vx, this.windBias * 42 * unit, 4.5, dt);
+      p.vx = approach(p.vx, speed, 4.5, dt);
       p.x += p.vx * dt;
       p.y += p.vy * dt;
     }
@@ -483,6 +494,7 @@ export class AlpineInteractions {
   }
 
   private stepSmokeRings(dt: number, unit: number): void {
+    const speed = (SMOKE_CALM_SPEED + SMOKE_GUST_SPEED * this.gustStrength) * unit;
     for (let i = this.smokeRings.length - 1; i >= 0; i--) {
       const s = this.smokeRings[i];
       s.age += dt;
@@ -490,7 +502,7 @@ export class AlpineInteractions {
         this.smokeRings.splice(i, 1);
         continue;
       }
-      s.vx = approach(s.vx, this.windBias * 7 * unit, 2.2, dt);
+      s.vx = approach(s.vx, speed, 2.2, dt);
       s.x += s.vx * dt;
       s.y += s.vy * dt;
     }

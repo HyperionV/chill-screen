@@ -1,4 +1,5 @@
 import { clamp, lerp } from '../../../world/math';
+import { breeze } from '../../wind';
 import { CABLE_SPAN, SCENE_ANCHORS, cableYAt } from './scenes';
 import type { AlpineSprites } from './sprites';
 
@@ -6,6 +7,8 @@ const CABLE_HIT_PAD = 10;
 const CABLE_SPEED = 0.048;
 const CABLE_DOCK_SECONDS = 4.5;
 const CABLE_STOP_SECONDS = 3.0;
+// Ambient gondola motion is limited to one stage pixel.
+const GONDOLA_WIND_SWAY = 1;
 
 /**
  * Manages the Cable Car Col gondola, steel catenary cables, station bullwheel,
@@ -77,17 +80,15 @@ export class CableCarSystem {
     h: number,
     unit: number,
     time: number,
-    parX: number,
-    parY: number,
     sprites: AlpineSprites,
   ): void {
-    const x0 = Math.round(CABLE_SPAN.u0 * w + parX);
-    const y0 = Math.round(CABLE_SPAN.v0 * h + parY);
-    const x1 = Math.round(CABLE_SPAN.u1 * w + parX);
+    const x0 = Math.round(CABLE_SPAN.u0 * w);
+    const y0 = Math.round(CABLE_SPAN.v0 * h);
+    const x1 = Math.round(CABLE_SPAN.u1 * w);
     L.drawImage(sprites.pylon.canvas, Math.round(x0 - sprites.pylon.w / 2), y0 - 2);
 
-    const stX = Math.round(SCENE_ANCHORS.cableStation.u * w + parX);
-    const stY = Math.round(SCENE_ANCHORS.cableStation.v * h + parY);
+    const stX = Math.round(SCENE_ANCHORS.cableStation.u * w);
+    const stY = Math.round(SCENE_ANCHORS.cableStation.v * h);
     L.drawImage(sprites.station.canvas, Math.round(stX - sprites.station.w / 2), Math.round(stY - sprites.station.h + 4));
 
     const wheelX = Math.round(stX - sprites.station.w / 2 + 5);
@@ -96,8 +97,8 @@ export class CableCarSystem {
     L.fillStyle = '#c4cee0';
     L.fillRect(wheelX + spoke, wheelY, 1, 1);
 
-    const terX = Math.round(SCENE_ANCHORS.cafeTerrace.u * w + parX);
-    const terY = Math.round(SCENE_ANCHORS.cafeTerrace.v * h + parY);
+    const terX = Math.round(SCENE_ANCHORS.cafeTerrace.u * w);
+    const terY = Math.round(SCENE_ANCHORS.cafeTerrace.v * h);
     const tx = Math.round(terX - sprites.terrace.w / 2);
     const ty = Math.round(terY - sprites.terrace.h + 4);
     L.drawImage(sprites.terrace.canvas, tx, ty);
@@ -106,7 +107,7 @@ export class CableCarSystem {
     const spanPx = Math.max(16, x1 - x0);
     for (let i = 0; i <= spanPx; i += 2) {
       const u = lerp(CABLE_SPAN.u0, CABLE_SPAN.u1, i / spanPx);
-      const cy = Math.round(cableYAt(u) * h + parY);
+      const cy = Math.round(cableYAt(u) * h);
       L.fillStyle = '#2c3444';
       L.fillRect(x0 + i, cy, 2, 1);
       L.fillStyle = '#5c667c';
@@ -114,12 +115,12 @@ export class CableCarSystem {
     }
 
     const carU = this.gondolaU;
-    const carX = Math.round(carU * w + parX);
-    const carY = Math.round(cableYAt(carU) * h + parY);
+    const carX = Math.round(carU * w);
+    const carY = Math.round(cableYAt(carU) * h);
     const swing =
       this.swingAmp > 0.05
         ? Math.sin(this.swingTimer * 5.2) * this.swingAmp * Math.exp(-this.swingTimer * 0.85)
-        : Math.sin(time * 1.1) * 0.4 * unit;
+        : breeze(time, carX) * GONDOLA_WIND_SWAY;
     const gx = Math.round(carX + swing);
     const gy = carY;
     this.lastPos = { x: gx, y: gy, hitY: gy + Math.round(12 * unit) };
