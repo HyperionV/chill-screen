@@ -9,7 +9,7 @@ import { Route } from '../../journeys/route';
 import type { NightSky } from '../../night-sky';
 import { SkyDome, clamp01, type SkyState } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
-import { FishingCreatures } from './creatures';
+import { FishingCreatures, type RippleTrigger } from './creatures';
 import { FishingInteractions } from './interactions';
 import { FishingScenes } from './scenes';
 import { buildFishingSprites, type FishingSprites } from './sprites';
@@ -46,7 +46,7 @@ function toSceneIndex(index: number): SceneIndex {
 /**
  * Fishing Spot: a calm lakeside landscape with five scenes (Wooden Jetty, Reed Shallows,
  * Morning Rowboat, Evening Pier, Night Fishing), recurring angler and dog, interactive
- * cast-and-reel fishing, bird takeoffs, skittish fish shadows, and pointer parallax.
+ * cast-and-reel fishing, bird takeoffs, and skittish fish shadows.
  */
 export class FishingSpotView implements OutsideView {
   private w = 0;
@@ -65,6 +65,7 @@ export class FishingSpotView implements OutsideView {
   private readonly scenes = new FishingScenes();
   private readonly creatures = new FishingCreatures();
   private readonly interactions = new FishingInteractions();
+  private readonly addRipple = (r: RippleTrigger) => this.interactions.addRing(r);
   private sprites: FishingSprites | null = null;
 
   constructor(nightSky: NightSky) {
@@ -108,6 +109,7 @@ export class FishingSpotView implements OutsideView {
     const dt = Math.min(0.1, Math.max(0, frame.dt));
     ctx.imageSmoothingEnabled = false;
 
+    this.scenes.stepWind(frame.time, dt);
     this.route.advance(dt, 1);
     const now = this.route.now;
     const sceneA = toSceneIndex(now.index);
@@ -130,7 +132,7 @@ export class FishingSpotView implements OutsideView {
       state.day,
       this.interactions.pointer,
       rowboatX,
-      (r) => this.interactions.addRing(r),
+      this.addRipple,
     );
     if (blend > 0.005) {
       this.creatures.update(
@@ -141,30 +143,22 @@ export class FishingSpotView implements OutsideView {
         state.day,
         this.interactions.pointer,
         rowboatX,
-        (r) => this.interactions.addRing(r),
+        this.addRipple,
       );
     }
 
     // 1. Sky dome (shared across scene transitions)
     this.dome.draw(ctx, state, frame, this.look);
 
-    const parallax = this.interactions.parallax;
-
     // 2. Render active scene (or smooth 10-second cross-dissolve + camera glide between scenes)
     if (blend <= 0.005) {
-      this.renderLandBuffer(this.landA.ctx, state, sceneA, frame.time, parallax.x);
+      this.renderLandBuffer(this.landA.ctx, state, sceneA, frame.time);
       ctx.drawImage(this.landA.canvas, 0, 0);
-      this.renderPostTint(ctx, state, sceneA, frame, hour, parallax.x, 1);
+      this.renderPostTint(ctx, state, sceneA, frame, hour, 1);
     } else {
       const glide = CAMERA_GLIDE_PX * this.unit;
-      this.renderLandBuffer(this.landA.ctx, state, sceneA, frame.time, parallax.x - blend * (glide / this.unit) * 0.25);
-      this.renderLandBuffer(
-        this.landB.ctx,
-        state,
-        sceneB,
-        frame.time,
-        parallax.x + (1 - blend) * (glide / this.unit) * 0.25,
-      );
+      this.renderLandBuffer(this.landA.ctx, state, sceneA, frame.time);
+      this.renderLandBuffer(this.landB.ctx, state, sceneB, frame.time);
 
       ctx.save();
       ctx.globalAlpha = 1 - blend;
@@ -173,11 +167,11 @@ export class FishingSpotView implements OutsideView {
       ctx.drawImage(this.landB.canvas, Math.round((1 - blend) * glide), 0);
       ctx.restore();
 
-      this.renderPostTint(ctx, state, sceneA, frame, hour, parallax.x, 1 - blend);
-      this.renderPostTint(ctx, state, sceneB, frame, hour, parallax.x, blend);
+      this.renderPostTint(ctx, state, sceneA, frame, hour, 1 - blend);
+      this.renderPostTint(ctx, state, sceneB, frame, hour, blend);
     }
 
-    this.scenes.drawForeground(ctx, this.sprites, state, this.layout, frame.time, parallax.x);
+    this.scenes.drawForeground(ctx, this.sprites, state, this.layout, frame.time);
     this.title.draw(ctx, dt, this.w, this.h, now.name);
     return this.look;
   }
@@ -187,13 +181,12 @@ export class FishingSpotView implements OutsideView {
     state: SkyState,
     scene: SceneIndex,
     time: number,
-    parallaxX: number,
   ): void {
     if (!this.sprites) return;
     L.imageSmoothingEnabled = false;
     L.clearRect(0, 0, this.w, this.h);
-    this.scenes.drawBackdrop(L, state, scene, this.layout, parallaxX, time);
-    this.scenes.drawWater(L, this.sprites, state, scene, this.layout, time, parallaxX);
+    this.scenes.drawBackdrop(L, state, scene, this.layout, time);
+    this.scenes.drawWater(L, this.sprites, state, scene, this.layout, time);
     this.scenes.drawSceneMidground(
       L,
       this.sprites,
@@ -203,10 +196,9 @@ export class FishingSpotView implements OutsideView {
       time,
       this.interactions,
       this.creatures,
-      parallaxX,
     );
     this.tintLand(L, state, scene);
-    this.scenes.drawLights(L, this.sprites, state, scene, this.layout, time, parallaxX);
+    this.scenes.drawLights(L, this.sprites, state, scene, this.layout, time);
   }
 
   private renderPostTint(
@@ -215,14 +207,13 @@ export class FishingSpotView implements OutsideView {
     scene: SceneIndex,
     frame: ViewFrame,
     hour: number,
-    parallaxX: number,
     alpha: number,
   ): void {
     if (alpha < 0.01 || !this.sprites) return;
     ctx.save();
     ctx.globalAlpha = alpha;
     this.creatures.drawNightAndGlowLife(ctx, this.sprites, scene, this.layout, frame.time, state.day);
-    this.drawLakeMist(ctx, state, scene, frame, hour, parallaxX);
+    this.drawLakeMist(ctx, state, scene, frame, hour);
     ctx.restore();
   }
 
@@ -232,14 +223,14 @@ export class FishingSpotView implements OutsideView {
     scene: SceneIndex,
     frame: ViewFrame,
     hour: number,
-    parallaxX: number,
   ): void {
-    this.scenes.drawLayeredShoreMist(ctx, state, scene, this.layout, frame.time, hour, parallaxX);
+    this.scenes.drawLayeredShoreMist(ctx, state, scene, this.layout, frame.time, hour);
 
     const dawnMist = hour >= 5.2 && hour <= 8.5 ? Math.sin(((hour - 5.2) / 3.3) * Math.PI) * 0.45 : 0;
     const sceneMist = scene === 2 ? 0.65 : 0;
     const mistStrength = Math.max(dawnMist, sceneMist);
 
+    // Condensation stays on the glass so a wiped patch can fill back in.
     if (mistStrength > 0.05) {
       this.fog.grow(frame.dt * 0.22 * mistStrength, 0.72 * mistStrength);
       if (frame.pointer) this.fog.wipe(frame.pointer.x, frame.pointer.y, 26 * this.unit);

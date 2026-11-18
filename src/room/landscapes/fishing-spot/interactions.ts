@@ -104,7 +104,7 @@ export function anchorsForScene(scene: SceneIndex, layout: SceneLayout): SceneAn
   }
 }
 
-/** Handles pointer velocity, parallax easing, dog reactivity, water ripples, and cast-and-reel fishing. */
+/** Handles pointer velocity, dog reactivity, water ripples, and cast-and-reel fishing. */
 export class FishingInteractions {
   private phase: CastPhase = 'idle';
   private targetX = 220;
@@ -114,10 +114,8 @@ export class FishingInteractions {
   private speciesIndex = 0;
   private currentSpecies: FishSpecies = 'perch';
 
-  private prevPointer: { x: number; y: number } | null = null;
+  private readonly pointerPosition: PointerDesign = { x: 0, y: 0, speed: 0 };
   private pointerState: PointerDesign | null = null;
-  private parallaxX = 0;
-  private parallaxY = 0;
   private dogReact = 0;
   private catReact = 0;
 
@@ -126,10 +124,6 @@ export class FishingInteractions {
 
   get pointer(): PointerDesign | null {
     return this.pointerState;
-  }
-
-  get parallax(): { x: number; y: number } {
-    return { x: this.parallaxX, y: this.parallaxY };
   }
 
   get dogAlert(): number {
@@ -217,26 +211,20 @@ export class FishingInteractions {
     scene: SceneIndex,
     layout: SceneLayout,
   ): void {
-    // 1. Update pointer velocity & gentle parallax easing
+    // 1. Update pointer velocity.
     if (pointerStage) {
       const px = pointerStage.x / layout.unit;
       const py = pointerStage.y / layout.unit;
       let speed = 0;
-      if (this.prevPointer && dt > 0.001) {
-        speed = Math.hypot(px - this.prevPointer.x, py - this.prevPointer.y) / dt;
+      if (this.pointerState && dt > 0.001) {
+        speed = Math.hypot(px - this.pointerState.x, py - this.pointerState.y) / dt;
       }
-      this.prevPointer = { x: px, y: py };
-      this.pointerState = { x: px, y: py, speed };
-
-      const targetPx = clamp((px / layout.designW - 0.5) * 2, -1, 1);
-      const targetPy = clamp((py / layout.designH - 0.5) * 2, -1, 1);
-      this.parallaxX = approach(this.parallaxX, targetPx, 3.2, dt);
-      this.parallaxY = approach(this.parallaxY, targetPy, 3.2, dt);
+      this.pointerPosition.x = px;
+      this.pointerPosition.y = py;
+      this.pointerPosition.speed = speed;
+      this.pointerState = this.pointerPosition;
     } else {
-      this.prevPointer = null;
       this.pointerState = null;
-      this.parallaxX = approach(this.parallaxX, 0, 2.2, dt);
-      this.parallaxY = approach(this.parallaxY, 0, 2.2, dt);
     }
 
     // 2. Dog & pier cat proximity checks
