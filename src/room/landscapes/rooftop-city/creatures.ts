@@ -114,14 +114,13 @@ export class RooftopCreatures {
     nextScene: number,
     blend: number,
     camX: number,
-    pxShift: number,
     designW: number,
     day: number,
     pointerDesign: { x: number; y: number } | null,
   ): void {
     this.cat.update(dt, activeScene, nextScene, blend);
-    this.updatePigeons(dt, time, camX, pxShift, designW, pointerDesign);
-    this.updateBees(dt, time, camX, pxShift, designW, day, pointerDesign);
+    this.updatePigeons(dt, time, camX, designW, pointerDesign);
+    this.updateBees(dt, time, camX, designW, day, pointerDesign);
 
     if (this.neighbourWaveTimer > 0) this.neighbourWaveTimer = Math.max(0, this.neighbourWaveTimer - dt);
     if (this.keeperTossTimer > 0) this.keeperTossTimer = Math.max(0, this.keeperTossTimer - dt);
@@ -163,14 +162,13 @@ export class RooftopCreatures {
     L: CanvasRenderingContext2D,
     time: number,
     camX: number,
-    pxShift: number,
     designW: number,
     day: number,
     unit: number,
     sprites: CastSprites,
   ): void {
     const halfW = designW * 0.5;
-    const foreCam = camX + pxShift;
+    const foreCam = camX;
     L.imageSmoothingEnabled = false;
 
     this.drawBarPeople(L, time, foreCam, halfW, designW, unit, sprites);
@@ -245,13 +243,12 @@ export class RooftopCreatures {
     ctx: CanvasRenderingContext2D,
     time: number,
     camX: number,
-    pxShift: number,
     designW: number,
     unit: number,
     sprites: CastSprites,
   ): void {
     const halfW = designW * 0.5;
-    const foreCam = camX + pxShift;
+    const foreCam = camX;
     ctx.imageSmoothingEnabled = false;
 
     for (const b of this.balloons) {
@@ -363,12 +360,11 @@ export class RooftopCreatures {
     dt: number,
     time: number,
     camX: number,
-    pxShift: number,
     designW: number,
     pointerDesign: { x: number; y: number } | null,
   ): void {
     const halfW = designW * 0.5;
-    const foreCam = camX + pxShift;
+    const foreCam = camX;
 
     for (const p of this.pigeons) {
       const sx = wrapDelta(p.wx, foreCam, WORLD_W) + halfW;
@@ -425,14 +421,13 @@ export class RooftopCreatures {
     dt: number,
     time: number,
     camX: number,
-    pxShift: number,
     designW: number,
     day: number,
     pointerDesign: { x: number; y: number } | null,
   ): void {
     if (day <= 0.25) return;
     const halfW = designW * 0.5;
-    const foreCam = camX + pxShift;
+    const foreCam = camX;
     for (const b of this.bees) {
       const targetX = b.anchorWx + Math.sin(time * 1.1 + b.phase) * 14;
       const targetY = b.anchorY + Math.cos(time * 1.7 + b.phase * 1.3) * 6;

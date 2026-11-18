@@ -2,6 +2,10 @@ import { drawText, plainText } from '../../../render/pixel-font';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { pixmap } from '../../journeys/pixmap';
 import type { SpriteBox } from './cast-sprites';
+import { ditherThreshold } from './light-halos';
+
+export const GREENHOUSE_LAMP_OFFSETS = [-22, 22];
+export const GREENHOUSE_LAMP_HEIGHT = 45;
 
 function box(canvas: HTMLCanvasElement): SpriteBox {
   return { canvas, w: canvas.width, h: canvas.height };
@@ -92,8 +96,15 @@ export function buildBarAndNeon(): {
     b.fillRect(45, 10, 1, 4);
     b.fillRect(43, 14, 5, 1);
 
-    g.fillStyle = 'rgba(110, 238, 248, 0.25)';
-    g.fillRect(2, 2, nw - 4, nh - 4);
+    // Dithered neon halo wash behind lettering instead of a flat tinted box
+    g.fillStyle = 'rgba(110, 238, 248, 0.24)';
+    for (let y = 2; y < nh - 2; y++) {
+      for (let x = 2; x < nw - 2; x++) {
+        if (((x + y) & 1) === 0 || (x >= 5 && x <= nw - 6 && y >= 5 && y <= nh - 6)) {
+          g.fillRect(x, y, 1, 1);
+        }
+      }
+    }
     drawText(g, plainText('MOON BAR'), 6, 7, '#7cf4ff', 1);
     g.fillStyle = '#ff7eb6';
     g.fillRect(42, 5, 7, 1);
@@ -123,8 +134,8 @@ export function buildBarAndNeon(): {
     c.fillStyle = '#ffe082';
     c.fillRect(10, 2, 2, 2);
 
-    g.fillStyle = 'rgba(255, 206, 108, 0.28)';
-    g.fillRect(8, 0, 6, 6);
+    g.fillStyle = 'rgba(255, 206, 108, 0.36)';
+    g.fillRect(9, 1, 4, 4);
     g.fillStyle = '#fff0a8';
     g.fillRect(10, 2, 2, 2);
   }
@@ -160,14 +171,10 @@ export function buildGardenStructures(): {
       const x0 = 59 - half;
       c.fillStyle = 'rgba(136, 186, 206, 0.42)';
       c.fillRect(x0, y, half * 2, 1);
-      g.fillStyle = 'rgba(255, 214, 124, 0.28)';
-      g.fillRect(x0 + 2, y, Math.max(0, half * 2 - 4), 1);
     }
 
     c.fillStyle = 'rgba(148, 198, 214, 0.36)';
     c.fillRect(8, 26, 102, 38);
-    g.fillStyle = 'rgba(255, 208, 118, 0.36)';
-    g.fillRect(10, 28, 98, 34);
 
     c.fillStyle = '#386e34';
     c.fillRect(14, 42, 24, 18);
@@ -202,9 +209,7 @@ export function buildGardenStructures(): {
       c.fillRect(59 + Math.round(half * 0.45), y, 1, 1);
     }
 
-    g.fillStyle = 'rgba(255, 238, 170, 0.85)';
-    g.fillRect(28, 28, 18, 2);
-    g.fillRect(72, 28, 18, 2);
+    paintGreenhouseLight(g, gw / 2, gh - GREENHOUSE_LAMP_HEIGHT);
   }
 
   const buildBed = (withTomatoes: boolean): SpriteBox => {
@@ -292,4 +297,33 @@ export function buildGardenStructures(): {
     sunflower,
     sprinkler,
   };
+}
+
+function paintGreenhouseLight(ctx: CanvasRenderingContext2D, glassCenter: number, lampY: number): void {
+  const lightRadius = 24;
+  const glassLeft = 8;
+  const glassRight = 110;
+  for (const offset of GREENHOUSE_LAMP_OFFSETS) {
+    const lampX = glassCenter + offset;
+    for (let y = 14; y < 44; y++) {
+      const halfGlass = Math.round(6 + (y - 4) * 50 / 22);
+      for (let x = Math.max(glassLeft, lampX - lightRadius); x < Math.min(glassRight, lampX + lightRadius); x++) {
+        if (y < 26 && Math.abs(x - glassCenter) >= halfGlass - 2) continue;
+        if (y >= 25 && (y <= 26 || (x - 6) % 17 < 2)) continue;
+        const strength = 1 - Math.hypot(x - lampX, (y - lampY) * 1.4) / lightRadius;
+        if (strength <= ditherThreshold(x, y)) continue;
+        ctx.fillStyle = strength > 0.55 ? '#ffc47751' : '#ffd79525';
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    ctx.fillStyle = '#ffe6a5';
+    ctx.fillRect(lampX - 4, lampY, 9, 1);
+    ctx.fillStyle = '#fff4c7';
+    ctx.fillRect(lampX - 1, lampY, 3, 1);
+  }
+  // The leaves that face the panes pick up narrow warm edges.
+  ctx.fillStyle = '#efd08068';
+  ctx.fillRect(17, 41, 6, 1);
+  ctx.fillRect(51, 36, 8, 1);
+  ctx.fillRect(85, 43, 5, 1);
 }

@@ -1,6 +1,7 @@
 import { css, mix, shade, type RGB } from '../../../render/color';
 import type { SkyState } from '../../sky';
 import { clamp01 } from '../../sky';
+import { drawHalo, type HaloSprites } from './light-halos';
 import {
   FAR_PARALLAX,
   FAR_SPAN,
@@ -18,7 +19,8 @@ import {
 import type { RooftopSprites } from './sprites';
 
 const FAR_BASE: RGB = [74, 84, 112];
-const DAWN_SMOG: RGB = [228, 162, 168];
+const DAWN_HAZE: RGB = [204, 146, 157];
+const DAWN_HUE_STRENGTH = 0.19;
 
 const MID_TONES: readonly RGB[] = [
   [96, 82, 86],   // warm brick
@@ -103,15 +105,15 @@ export class Skyline {
     state: SkyState,
     hour: number,
     camX: number,
-    pxShift: number,
     designW: number,
     designH: number,
     unit: number,
     sprites: RooftopSprites,
   ): void {
     const halfW = designW * 0.5;
-    const farCam = camX * FAR_PARALLAX + pxShift * FAR_PARALLAX;
-    const farColor = mix(FAR_BASE, state.sky.horizon, 0.52);
+    const farCam = camX * FAR_PARALLAX;
+    const dawn = Math.max(0, 1 - Math.abs(hour - 6.3) / 1.8);
+    const farColor = mix(mix(FAR_BASE, state.sky.horizon, 0.52), DAWN_HAZE, dawn * DAWN_HUE_STRENGTH);
 
     // Layer 1: Far skyscrapers
     L.fillStyle = css(farColor);
@@ -130,18 +132,11 @@ export class Skyline {
       }
     }
 
-    // Smoggy pink dawn atmospheric band over far towers
-    const dawnGlow = Math.max(0, 1 - Math.abs(hour - 6.3) / 1.8);
-    if (dawnGlow > 0.04) {
-      L.fillStyle = css(DAWN_SMOG, 0.24 * dawnGlow);
-      L.fillRect(0, Math.round(122 * unit), Math.round(designW * unit), Math.round(48 * unit));
-    }
-
     // Layer 2 (pre-tint): Blimp & helicopters in upper sky
     this.drawSkyTrafficPreTint(L, farCam, halfW, designW, unit, sprites);
 
     // Layer 3: Mid-far city buildings + dark window recesses
-    const midCam = camX * MID_PARALLAX + pxShift * MID_PARALLAX;
+    const midCam = camX * MID_PARALLAX;
     for (const b of this.layout.midBuildings) {
       const sx = wrapDelta(b.x, midCam, MID_SPAN) + halfW;
       if (sx + b.w < -16 || sx > designW + 16) continue;
@@ -163,7 +158,7 @@ export class Skyline {
     }
 
     // Layer 4: Mid-near neighbouring rooftops
-    const nearCam = camX * NEAR_ROOF_PARALLAX + pxShift * NEAR_ROOF_PARALLAX;
+    const nearCam = camX * NEAR_ROOF_PARALLAX;
     for (const r of this.layout.nearRoofs) {
       const sx = wrapDelta(r.x, nearCam, NEAR_ROOF_SPAN) + halfW;
       if (sx + r.w < -16 || sx > designW + 16) continue;
@@ -177,14 +172,14 @@ export class Skyline {
     state: SkyState,
     time: number,
     camX: number,
-    pxShift: number,
     designW: number,
     unit: number,
     sprites: RooftopSprites,
+    halos: HaloSprites,
   ): void {
     const halfW = designW * 0.5;
     const night = 1 - state.day;
-    const farCam = camX * FAR_PARALLAX + pxShift * FAR_PARALLAX;
+    const farCam = camX * FAR_PARALLAX;
 
     // Far spire aircraft beacons (calm slow pulse <= 0.45 Hz)
     if (night > 0.2) {
@@ -194,10 +189,7 @@ export class Skyline {
         if (sx + t.w < -8 || sx > designW + 8) continue;
         const pulse = Math.sin(time * 2.4 + t.beaconPhase);
         if (pulse < 0.25) continue;
-        const bx = Math.round((sx + t.w * 0.5) * unit);
-        const by = Math.round((t.topY - 11) * unit);
-        ctx.fillStyle = `rgba(255, 86, 86, ${(0.85 * night).toFixed(2)})`;
-        ctx.fillRect(bx, by, Math.max(1, Math.round(unit)), Math.max(1, Math.round(unit)));
+        drawHalo(ctx, halos.beaconRed, sx + t.w * 0.5, t.topY - 11, unit, 0.52 * night);
       }
     }
 
@@ -235,7 +227,7 @@ export class Skyline {
     }
 
     // Mid-far building lit windows
-    const midCam = camX * MID_PARALLAX + pxShift * MID_PARALLAX;
+    const midCam = camX * MID_PARALLAX;
     for (const b of this.layout.midBuildings) {
       const sx = wrapDelta(b.x, midCam, MID_SPAN) + halfW;
       if (sx + b.w < -16 || sx > designW + 16) continue;
@@ -259,7 +251,7 @@ export class Skyline {
     }
 
     // Mid-near roof windows
-    const nearCam = camX * NEAR_ROOF_PARALLAX + pxShift * NEAR_ROOF_PARALLAX;
+    const nearCam = camX * NEAR_ROOF_PARALLAX;
     for (const r of this.layout.nearRoofs) {
       const sx = wrapDelta(r.x, nearCam, NEAR_ROOF_SPAN) + halfW;
       if (sx + r.w < -16 || sx > designW + 16) continue;
@@ -272,7 +264,6 @@ export class Skyline {
     dx: number,
     dy: number,
     camX: number,
-    pxShift: number,
     designW: number,
     night: number,
   ): boolean {
@@ -280,7 +271,7 @@ export class Skyline {
     const hitMargin = 2.5;
 
     // Check nearer roofs first so foreground windows win over buildings behind them.
-    const nearCam = camX * NEAR_ROOF_PARALLAX + pxShift * NEAR_ROOF_PARALLAX;
+    const nearCam = camX * NEAR_ROOF_PARALLAX;
     for (const r of this.layout.nearRoofs) {
       const sx = wrapDelta(r.x, nearCam, NEAR_ROOF_SPAN) + halfW;
       if (dx < sx - hitMargin || dx > sx + r.w + hitMargin) continue;
@@ -294,7 +285,7 @@ export class Skyline {
       }
     }
 
-    const midCam = camX * MID_PARALLAX + pxShift * MID_PARALLAX;
+    const midCam = camX * MID_PARALLAX;
     for (const b of this.layout.midBuildings) {
       const sx = wrapDelta(b.x, midCam, MID_SPAN) + halfW;
       if (dx < sx - hitMargin || dx > sx + b.w + hitMargin) continue;
