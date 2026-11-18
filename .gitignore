@@ -1,9 +1,8 @@
 node_modules/
 dist/
 
-# Cloud test runner (modal-tests skill): the box config is shared, its local timings and logs are not
-.modal-test/*
-!.modal-test/config.toml
+# Cloud test runner config and local timings
+.modal-test/
 
 # Browser automation snapshots
 .playwright-mcp/
@@ -11,3 +10,11 @@ dist/
 # Local build settings (copy .env.example)
 .env
 .env.local
+
+# Cloudflare local state
+.wrangler/
+
+# Local agent tooling and internal build briefs, not part of the project
+.claude/
+docs/briefs/
+.dev.vars

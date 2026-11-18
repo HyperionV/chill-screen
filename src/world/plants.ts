@@ -62,7 +62,7 @@ export function growPlants(tank: Tank, dt: number): void {
 
 /** Algae creeps over the sand with light, faster when the water is rich in waste. */
 export function growAlgae(tank: Tank, dt: number): void {
-  const rate = tank.light * (0.00002 + tank.nutrients * 0.00028);
+  const rate = tank.light * (0.00002 + tank.nutrients * 0.0002);
   let total = 0;
   for (let i = 0; i < ALGAE_CELLS; i++) {
     const g = rate * dt * (1 - tank.algae[i]);

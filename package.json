@@ -2,6 +2,28 @@
   "name": "chillscreen",
   "private": true,
   "version": "0.1.0",
+  "description": "A calm, living pixel-art window for your second screen: scenes, notes, tasks, reminders, a focus timer, radio and YouTube music.",
+  "license": "MIT",
+  "author": "HyperionV",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HyperionV/chill-screen.git"
+  },
+  "homepage": "https://chillscreen.pages.dev",
+  "bugs": {
+    "url": "https://github.com/HyperionV/chill-screen/issues"
+  },
+  "keywords": [
+    "pixel-art",
+    "canvas",
+    "ambient",
+    "second-screen",
+    "focus",
+    "pomodoro",
+    "lofi",
+    "vite",
+    "typescript"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite --port 4173 --strictPort",
