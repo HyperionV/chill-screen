@@ -49,6 +49,17 @@ export interface PointerDesign {
   speed: number;
 }
 
+export interface SpriteBox {
+  canvas: HTMLCanvasElement;
+  w: number;
+  h: number;
+}
+
+export interface SpritePair {
+  right: SpriteBox;
+  left: SpriteBox;
+}
+
 export interface SceneLayout {
   designW: number;
   designH: number;
@@ -63,7 +74,7 @@ export interface SceneLayout {
 
 /** Computes responsive design-space anchors that keep characters clear of the clock and radio. */
 export function computeLayout(w: number, _h: number, unit: number): SceneLayout {
-  const designW = w / Math.max(0.25, unit);
+  const designW = w / unit;
   const designH = DESIGN_ROWS;
   return {
     designW,

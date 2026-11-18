@@ -21,12 +21,13 @@ interface WaterRing {
   bright: boolean;
 }
 
-const MAX_RINGS = 24;
+const MAX_RINGS = 28;
 const MAX_TALLY = 10;
 const CAST_ARC_SECONDS = 0.26;
 const REEL_SECONDS = 1.35;
 const BITE_WINDOW_SECONDS = 4.8;
 const DOG_ALERT_RADIUS = 34;
+const CAT_ALERT_RADIUS = 28;
 
 /** Anchors in design pixels for the recurring angler's rod tip, dog, and bucket in each scene. */
 export interface SceneAnchors {
@@ -118,6 +119,7 @@ export class FishingInteractions {
   private parallaxX = 0;
   private parallaxY = 0;
   private dogReact = 0;
+  private catReact = 0;
 
   private readonly rings: WaterRing[] = [];
   readonly catchTally: CatchIcon[] = [];
@@ -132,6 +134,10 @@ export class FishingInteractions {
 
   get dogAlert(): number {
     return this.dogReact;
+  }
+
+  get catAlert(): number {
+    return this.catReact;
   }
 
   addRing(trigger: RippleTrigger): void {
@@ -233,12 +239,20 @@ export class FishingInteractions {
       this.parallaxY = approach(this.parallaxY, 0, 2.2, dt);
     }
 
-    // 2. Dog proximity check
+    // 2. Dog & pier cat proximity checks
     const anchors = anchorsForScene(scene, layout);
     const nearDog =
       this.pointerState !== null &&
       Math.hypot(this.pointerState.x - anchors.dogX, this.pointerState.y - (anchors.dogY - 7)) <= DOG_ALERT_RADIUS;
     this.dogReact = approach(this.dogReact, nearDog ? 1 : 0, nearDog ? 9 : 2.5, dt);
+
+    const catX = scene === 3 ? layout.jettyRight - 18 : 42;
+    const catY = scene === 3 ? layout.deckY - 6 : layout.deckY - 17;
+    const nearCat =
+      (scene === 0 || scene === 3 || scene === 4) &&
+      this.pointerState !== null &&
+      Math.hypot(this.pointerState.x - catX, this.pointerState.y - catY) <= CAT_ALERT_RADIUS;
+    this.catReact = approach(this.catReact, nearCat ? 1 : 0, nearCat ? 8 : 2.2, dt);
 
     // 3. Cast & reel state machine
     if (this.phase === 'arc') {
@@ -309,22 +323,43 @@ export class FishingInteractions {
     };
   }
 
-  /** Draws expanding pixel-art elliptical ripple rings on the lake surface. */
+  /** Draws expanding pixel-art concentric elliptical ripple rings on the lake surface. */
   drawRings(ctx: CanvasRenderingContext2D, unit: number, day: number): void {
     const dot = Math.max(1, Math.round(unit));
     for (const r of this.rings) {
       const k = r.age / r.duration;
       const alpha = (1 - k) * (r.bright ? 0.65 : 0.42) * (0.45 + 0.55 * day);
       if (alpha < 0.03) continue;
-      const rx = Math.round((2 + r.maxR * k) * unit);
-      const ry = Math.max(dot, Math.round(rx * 0.32));
+      const rx = Math.max(2, Math.round((2 + r.maxR * k) * unit));
+      const ry = Math.max(dot, Math.round(rx * 0.34));
       const cx = Math.round(r.x * unit);
       const cy = Math.round(r.y * unit);
-      ctx.fillStyle = `rgba(232,246,255,${alpha.toFixed(3)})`;
-      ctx.fillRect(cx - rx, cy, Math.max(dot, Math.round(rx * 0.45)), dot);
-      ctx.fillRect(cx + Math.round(rx * 0.55), cy, Math.max(dot, Math.round(rx * 0.45)), dot);
-      ctx.fillRect(cx - Math.round(rx * 0.65), cy - ry, Math.round(rx * 1.3), dot);
-      ctx.fillRect(cx - Math.round(rx * 0.65), cy + ry, Math.round(rx * 1.3), dot);
+      this.drawPixelEllipse(ctx, cx, cy, rx, ry, dot, `rgba(232,246,255,${alpha.toFixed(3)})`);
+      if (r.bright && k > 0.25) {
+        const innerAlpha = alpha * 0.55;
+        const irx = Math.max(2, Math.round(rx * 0.58));
+        const iry = Math.max(dot, Math.round(irx * 0.34));
+        this.drawPixelEllipse(ctx, cx, cy, irx, iry, dot, `rgba(220,242,252,${innerAlpha.toFixed(3)})`);
+      }
+    }
+  }
+
+  private drawPixelEllipse(
+    ctx: CanvasRenderingContext2D,
+    cx: number,
+    cy: number,
+    rx: number,
+    ry: number,
+    dot: number,
+    color: string,
+  ): void {
+    ctx.fillStyle = color;
+    const steps = 20;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      const px = Math.round(cx + Math.cos(a) * rx);
+      const py = Math.round(cy + Math.sin(a) * ry);
+      ctx.fillRect(px, py, dot, dot);
     }
   }
 

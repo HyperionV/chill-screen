@@ -77,11 +77,10 @@ export class FishingSpotView implements OutsideView {
     this.h = Math.max(0, Math.round(h));
     if (this.w <= 0 || this.h <= 0) return;
 
-    this.unit = Math.max(0.5, this.h / DESIGN_ROWS);
+    this.unit = this.h / DESIGN_ROWS;
     this.layout = computeLayout(this.w, this.h, this.unit);
     this.dome.resize(this.w, this.h);
     this.fog.resize(this.w, this.h);
-    this.scenes.resize(this.w, this.h);
 
     this.landA.canvas.width = this.w;
     this.landA.canvas.height = this.h;
@@ -93,6 +92,7 @@ export class FishingSpotView implements OutsideView {
     if (!this.sprites) {
       this.sprites = buildFishingSprites();
     }
+    this.scenes.resize(this.w, this.h, this.layout, this.sprites);
     this.creatures.syncLayout(this.layout);
   }
 
@@ -122,12 +122,26 @@ export class FishingSpotView implements OutsideView {
 
     this.interactions.update(dt, frame.pointer, sceneA, this.layout);
     const rowboatX = this.scenes.rowboatX(frame.time, this.layout);
-    this.creatures.update(dt, frame.time, sceneA, this.layout, this.interactions.pointer, rowboatX, (r) =>
-      this.interactions.addRing(r),
+    this.creatures.update(
+      dt,
+      frame.time,
+      sceneA,
+      this.layout,
+      state.day,
+      this.interactions.pointer,
+      rowboatX,
+      (r) => this.interactions.addRing(r),
     );
     if (blend > 0.005) {
-      this.creatures.update(dt, frame.time, sceneB, this.layout, this.interactions.pointer, rowboatX, (r) =>
-        this.interactions.addRing(r),
+      this.creatures.update(
+        dt,
+        frame.time,
+        sceneB,
+        this.layout,
+        state.day,
+        this.interactions.pointer,
+        rowboatX,
+        (r) => this.interactions.addRing(r),
       );
     }
 
@@ -178,8 +192,8 @@ export class FishingSpotView implements OutsideView {
     if (!this.sprites) return;
     L.imageSmoothingEnabled = false;
     L.clearRect(0, 0, this.w, this.h);
-    this.scenes.drawBackdrop(L, this.sprites, state, scene, this.layout, parallaxX, time);
-    this.scenes.drawWater(L, state, scene, this.layout, time, parallaxX);
+    this.scenes.drawBackdrop(L, state, scene, this.layout, parallaxX, time);
+    this.scenes.drawWater(L, this.sprites, state, scene, this.layout, time, parallaxX);
     this.scenes.drawSceneMidground(
       L,
       this.sprites,
@@ -192,6 +206,7 @@ export class FishingSpotView implements OutsideView {
       parallaxX,
     );
     this.tintLand(L, state, scene);
+    this.scenes.drawLights(L, this.sprites, state, scene, this.layout, time, parallaxX);
   }
 
   private renderPostTint(
@@ -203,12 +218,11 @@ export class FishingSpotView implements OutsideView {
     parallaxX: number,
     alpha: number,
   ): void {
-    if (alpha < 0.01) return;
+    if (alpha < 0.01 || !this.sprites) return;
     ctx.save();
     ctx.globalAlpha = alpha;
-    this.scenes.drawPostTintGlows(ctx, state, scene, this.layout, frame.time, parallaxX);
-    this.creatures.drawNightAndGlowLife(ctx, scene, this.layout, frame.time, state.day);
-    this.drawLakeMist(ctx, state, scene, frame, hour);
+    this.creatures.drawNightAndGlowLife(ctx, this.sprites, scene, this.layout, frame.time, state.day);
+    this.drawLakeMist(ctx, state, scene, frame, hour, parallaxX);
     ctx.restore();
   }
 
@@ -218,7 +232,10 @@ export class FishingSpotView implements OutsideView {
     scene: SceneIndex,
     frame: ViewFrame,
     hour: number,
+    parallaxX: number,
   ): void {
+    this.scenes.drawLayeredShoreMist(ctx, state, scene, this.layout, frame.time, hour, parallaxX);
+
     const dawnMist = hour >= 5.2 && hour <= 8.5 ? Math.sin(((hour - 5.2) / 3.3) * Math.PI) * 0.45 : 0;
     const sceneMist = scene === 2 ? 0.65 : 0;
     const mistStrength = Math.max(dawnMist, sceneMist);
@@ -227,17 +244,7 @@ export class FishingSpotView implements OutsideView {
       this.fog.grow(frame.dt * 0.22 * mistStrength, 0.72 * mistStrength);
       if (frame.pointer) this.fog.wipe(frame.pointer.x, frame.pointer.y, 26 * this.unit);
       const tint = mix(MIST_COLOR, state.sky.horizon, 0.35);
-      this.fog.draw(ctx, this.w, this.h, tint, 0.24 * mistStrength);
-
-      // Gentle drifting horizontal mist ribbons above the water surface
-      const waterY = Math.round(this.h * HORIZON + 10 * this.unit);
-      ctx.fillStyle = css(tint, 0.16 * mistStrength);
-      for (let i = 0; i < 5; i++) {
-        const span = this.w + 80 * this.unit;
-        const mx = Math.round((((i * 104 + frame.time * (2.5 + (i % 2))) % span) - 40 * this.unit));
-        const my = waterY + Math.round(((i % 3) * 7 - 4) * this.unit);
-        ctx.fillRect(mx, my, Math.round(54 * this.unit), Math.max(2, Math.round(2 * this.unit)));
-      }
+      this.fog.draw(ctx, this.w, this.h, tint, 0.2 * mistStrength);
     } else if (this.fog.covered > 0.01) {
       this.fog.fade(frame.dt * 0.45);
       this.fog.draw(ctx, this.w, this.h, MIST_COLOR, 0.18);
@@ -268,9 +275,9 @@ export class FishingSpotView implements OutsideView {
     L.save();
     L.globalCompositeOperation = 'source-atop';
     if (night > 0.02) {
-      L.fillStyle = css([8, 14, 44], 0.55 * night);
+      L.fillStyle = css([17, 28, 50], 0.35 * night);
       L.fillRect(0, 0, this.w, this.h);
-      L.fillStyle = css([38, 68, 145], 0.16 * night);
+      L.fillStyle = css([64, 92, 129], 0.14 * night);
       L.fillRect(0, 0, this.w, this.h);
     }
     const low = clamp01(1 - sun.up / 0.55) * day;
@@ -280,10 +287,10 @@ export class FishingSpotView implements OutsideView {
     }
     // Subtle scene-signature atmospheric tint that still respects Time control
     if (scene === 3) {
-      L.fillStyle = css([236, 138, 76], 0.16);
+      L.fillStyle = css([236, 138, 76], 0.10 * day);
       L.fillRect(0, 0, this.w, this.h);
     } else if (scene === 4) {
-      L.fillStyle = css([12, 20, 48], 0.24 * day);
+      L.fillStyle = css([28, 47, 70], 0.14 * day);
       L.fillRect(0, 0, this.w, this.h);
     }
     L.restore();
