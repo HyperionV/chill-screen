@@ -1,6 +1,7 @@
 import { hash } from '../../journeys/noise';
-import { DESIGN_HEIGHT, SCENES, waterSpan, type Point, type Scene } from './scenes';
-import { oval, rect, sprite, type Sprites } from './sprites';
+import { DESIGN_HEIGHT, GROUND_DEPTH, SCENES, waterSpan, type Point, type Scene } from './scenes';
+import { GroveLighting } from './lighting';
+import { rect } from './sprites';
 import type { GroveLife } from './life';
 
 interface Petal {
@@ -12,7 +13,6 @@ const AMBIENT_PETALS = 82;
 const BURST_PETALS = 96;
 const SHOWER_COUNT = 32;
 const RIPPLE_COUNT = 8;
-const LANTERN_SECONDS = 35;
 const RIPPLE_SECONDS = 3.6;
 const TAU = Math.PI * 2;
 const MAX_GUST = 11;
@@ -20,6 +20,7 @@ const POINTER_SPEED = 120;
 const GUST_EASING = 8;
 
 export class GroveInteractions {
+  readonly lighting = new GroveLighting();
   gust = 0;
   gustY = 0;
   private previous: Point | null = null;
@@ -31,10 +32,10 @@ export class GroveInteractions {
     swirl: false, centerX: 0, centerY: 0,
   }));
   private readonly ripples: Ripple[] = Array.from({ length: RIPPLE_COUNT }, () => ({ x: 0, y: 0, age: RIPPLE_SECONDS, scene: -1 }));
-  private readonly lamps = SCENES.map((scene) => new Float32Array(scene.lanterns.length));
 
   resize(width: number): void {
     this.width = width;
+    this.lighting.resize(width);
     this.previous = null;
     for (let i = 0; i < this.petals.length; i++) {
       const p = this.petals[i];
@@ -83,7 +84,7 @@ export class GroveInteractions {
       }
     }
     for (const ripple of this.ripples) ripple.age += dt;
-    for (const lamps of this.lamps) for (let i = 0; i < lamps.length; i++) lamps[i] = Math.max(0, lamps[i] - dt);
+    this.lighting.update(dt);
   }
 
   private shower(x: number, y: number, scene: number, swirl: boolean): void {
@@ -107,26 +108,13 @@ export class GroveInteractions {
 
   press(x: number, y: number, chapter: number, parallaxX: number, parallaxY: number, life: GroveLife): void {
     const scene = SCENES[chapter];
-    const groundX = x - Math.round(parallaxX * 0.75);
-    const groundY = y - Math.round(parallaxY * 0.75);
+    const groundX = x - Math.round(parallaxX * GROUND_DEPTH);
+    const groundY = y - Math.round(parallaxY * GROUND_DEPTH);
     if (Math.abs(groundX - life.catX(scene, this.width)) < 19 && Math.abs(groundY - scene.cat.y + 9) < 18) {
       life.reactCat();
       return;
     }
-    for (let i = 0; i < scene.lanterns.length; i++) {
-      const lamp = scene.lanterns[i];
-      if (Math.abs(groundX - lamp.u * this.width) < 12 && Math.abs(groundY - lamp.y + 7) < 12) {
-        this.lamps[chapter][i] = LANTERN_SECONDS;
-        return;
-      }
-    }
-    // The stone lantern is a light too; its timer follows the first hanging lamp.
-    const stoneX = this.width * (chapter === 1 ? 0.16 : 0.86);
-    const stoneY = chapter === 1 ? 243 : 252;
-    if (Math.abs(groundX - stoneX) < 14 && groundY > stoneY - 52 && groundY < stoneY + 3) {
-      this.lamps[chapter][0] = LANTERN_SECONDS;
-      return;
-    }
+    if (this.lighting.press(groundX, groundY, chapter)) return;
     if (scene.bridge && Math.abs(groundX - scene.bridge.x * this.width) < 42 && Math.abs(groundY - scene.bridge.y + 7) < 24) {
       this.shower(groundX, scene.bridge.y - 14, chapter, true);
       return;
@@ -185,7 +173,8 @@ export class GroveInteractions {
     }
   }
 
-  drawPetals(ctx: CanvasRenderingContext2D, chapter: number, time: number, night: number): void {
+  drawPetals(ctx: CanvasRenderingContext2D, chapter: number, time: number, night: number, groundX: number, groundY: number): void {
+    ctx.save();
     for (const p of this.petals) {
       if (p.age >= p.life || (p.scene !== -1 && p.scene !== chapter) || p.x < -3 || p.x > this.width + 3 || p.y > 274) continue;
       const x = Math.round(p.x + Math.sin(time + p.seed) * 3);
@@ -193,41 +182,17 @@ export class GroveInteractions {
       // Petals in front of the clock stay small and muted.
       const central = y > 78 && y < 152 && x > this.width * 0.3 && x < this.width * 0.7;
       const color = central ? '#c4a7b9' : night > 0.6 ? '#c3a2bd' : p.seed % 3 ? '#f6cbd9' : '#df9fb9';
-      if (chapter === 4 && night > 0.6 && !central && p.seed % 6 === 0) {
-        rect(ctx, 'rgba(248,195,214,0.1)', x - 1, y - 1, 4, 3);
-      }
-      rect(ctx, color, x, y, central ? 1 : 2, 1);
+      const width = central ? 1 : 2;
+      rect(ctx, color, x, y, width, 1);
       if (p.seed % 4 === 0 && !central) rect(ctx, night > 0.6 ? '#ead4dc' : '#ffe0e5', x + 1, y - 1, 1, 1);
+      const glow = this.lighting.petalLight(x - groundX, y - groundY);
+      if (glow > 0.02) {
+        ctx.globalAlpha = glow * (central ? 0.2 : 0.96);
+        rect(ctx, '#ffc09c', x, y, width, 1);
+        if (!central && p.seed % 4 === 0) rect(ctx, '#ffe6bb', x + 1, y - 1, 1, 1);
+        ctx.globalAlpha = 1;
+      }
     }
-  }
-
-  drawLanterns(ctx: CanvasRenderingContext2D, scene: Scene, chapter: number, time: number, night: number, assets: Sprites): void {
-    const lamps = this.lamps[chapter];
-    for (let i = 0; i < scene.lanterns.length; i++) {
-      const lamp = scene.lanterns[i];
-      const x = Math.round(lamp.u * this.width + Math.sin(time * 0.5 + i) + this.gust * 0.15);
-      const y = lamp.y;
-      const lit = Math.max(night, chapter === 4 ? 0.85 : 0, Math.min(1, lamps[i] / 3));
-      const warmth = Math.max(0, (lamps[i] - (LANTERN_SECONDS - 3)) / 3);
-      rect(ctx, '#725761', x, y - 29, 1, 17);
-      sprite(ctx, assets.lantern, x, y);
-      if (lit <= 0.02) continue;
-      ctx.fillStyle = `rgba(250,190,117,${lit * 0.08 + warmth * 0.12})`;
-      oval(ctx, ctx.fillStyle, x, y - 7, 17 + Math.round(warmth * 5), 21);
-      rect(ctx, '#edbe87', x - 3, y - 10, 6, 6);
-      rect(ctx, '#ffe7b5', x - 1, y - 9, 2, 4);
-      ctx.fillStyle = `rgba(247,197,130,${lit * 0.1})`;
-      oval(ctx, ctx.fillStyle, x, y + 22, 19, 4);
-    }
-    const stoneX = this.width * (chapter === 1 ? 0.16 : 0.86);
-    const stoneY = (chapter === 1 ? 243 : 252) - 32;
-    const lit = Math.max(night, Math.min(1, lamps[0] / 3));
-    const warmth = Math.max(0, (lamps[0] - (LANTERN_SECONDS - 3)) / 3);
-    if (lit > 0.02) {
-      ctx.fillStyle = `rgba(248,195,126,${lit * 0.12 + warmth * 0.14})`;
-      oval(ctx, ctx.fillStyle, stoneX, stoneY, 17, 14);
-      rect(ctx, '#e5b883', stoneX - 4, stoneY - 2, 8, 5);
-      rect(ctx, '#ffdf9d', stoneX - 2, stoneY - 1, 4, 3);
-    }
+    ctx.restore();
   }
 }

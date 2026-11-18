@@ -1,4 +1,4 @@
-import { mix, type RGB } from '../../../render/color';
+import { css, mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hourNow } from '../../../scene/clock';
 import type { Look } from '../../../wallpapers/look';
@@ -10,7 +10,7 @@ import { SkyDome, type SkyState } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
 import { GroveInteractions } from './interactions';
 import { GroveLife } from './life';
-import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, SCENES, SCENE_SECONDS, type Point } from './scenes';
+import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, GROUND_DEPTH, SCENES, SCENE_SECONDS, type Point } from './scenes';
 import { buildScenery, drawWheel, type Scenery } from './scenery';
 import { buildSprites, type Sprites } from './sprites';
 
@@ -18,10 +18,13 @@ const HORIZON = 0.65;
 const PARALLAX_X = 3;
 const PARALLAX_Y = 1.5;
 const SWAY_STRIP = 5;
-const NIGHT_SHADE = 0.57;
-const SUNSET_SHADE = 0.15;
+const NIGHT_SHADE = 0.53;
+const SUNSET_SHADE = 0.17;
 const GROVE_LIGHT: RGB = [181, 161, 173];
-const NIGHT_LIGHT: RGB = [28, 32, 65];
+const NIGHT_LIGHT: RGB = [32, 40, 77];
+const DUSK_ROSE: RGB = [224, 115, 143];
+const CLOCK_LEFT = 0.30;
+const CLOCK_RIGHT = 0.70;
 const luma = (color: RGB): number => (color[0] * 0.2126 + color[1] * 0.7152 + color[2] * 0.0722) / 255;
 
 export class CherryGrove implements OutsideView {
@@ -65,7 +68,7 @@ export class CherryGrove implements OutsideView {
       buffer.canvas.height = DESIGN_HEIGHT;
       buffer.ctx.imageSmoothingEnabled = false;
     }
-    this.assets = buildSprites();
+    this.assets ??= buildSprites();
     this.scenery = buildScenery(this.designWidth, this.assets);
     this.interactions.resize(this.designWidth);
     this.parallaxX = 0;
@@ -138,53 +141,69 @@ export class CherryGrove implements OutsideView {
     const scene = SCENES[chapter];
     const art = this.scenery[chapter];
     const land = this.land.ctx;
+    const night = 1 - state.day;
+    const lighting = this.interactions.lighting;
+    const groundX = Math.round(this.parallaxX * GROUND_DEPTH);
+    const groundY = Math.round(this.parallaxY * GROUND_DEPTH);
+    lighting.prepare(chapter, time, night, this.interactions.gust);
     ctx.clearRect(0, 0, this.designWidth, DESIGN_HEIGHT);
     ctx.drawImage(this.sky.canvas, 0, 0, this.designWidth, DESIGN_HEIGHT);
     land.clearRect(0, 0, this.designWidth, DESIGN_HEIGHT);
     this.layer(land, art.mountains, 0.18, time);
     this.layer(land, art.grove, 0.4, time);
-    this.layer(land, art.ground, 0.75, time);
+    this.layer(land, art.ground, GROUND_DEPTH, 0);
     land.save();
-    land.translate(Math.round(this.parallaxX * 0.75), Math.round(this.parallaxY * 0.75));
+    land.translate(groundX, groundY);
     if (chapter === 1) this.life.drawFish(land, this.designWidth, time);
     this.interactions.drawWater(land, scene, chapter, time);
+    lighting.drawWater(land, time);
     land.drawImage(art.props, 0, 0);
     if (chapter === 3) drawWheel(land, this.designWidth, time);
     if (chapter === 0) this.life.drawPerson(land, this.designWidth, assets);
     this.life.drawCat(land, scene, this.designWidth, assets, time);
     land.restore();
+    const moonlight = night * (0.68 + Math.max(0, state.moon.up) * 0.32);
     for (const tree of scene.trees) {
-      const image = assets.trees[tree.variant];
+      const { image, moonRim } = assets.trees[tree.variant];
       const width = Math.round(image.width * tree.size);
       const height = Math.round(image.height * tree.size);
       const x = Math.round(tree.u * this.designWidth - width / 2 + this.parallaxX);
       const y = Math.round(tree.y - height + this.parallaxY);
       const bend = Math.sin(time * 0.55 + tree.u * 8) * 1.2 + this.interactions.gust * 0.34 + this.interactions.gustY * 0.1;
+      const rim = moonlight * (tree.u > CLOCK_LEFT && tree.u < CLOCK_RIGHT ? 0.4 : 1);
       for (let row = 0; row < image.height; row += SWAY_STRIP) {
         const rows = Math.min(SWAY_STRIP, image.height - row);
         const lean = Math.round(bend * (1 - row / image.height) ** 2);
         const top = Math.round(row * tree.size);
         const bottom = Math.round((row + rows) * tree.size);
         land.drawImage(image, 0, row, image.width, rows, x + lean, y + top, width, bottom - top);
+        if (rim > 0 && row < image.height / 2) {
+          land.globalAlpha = rim;
+          land.drawImage(moonRim, 0, row, image.width, rows, x + lean, y + top, width, bottom - top);
+          land.globalAlpha = 1;
+        }
       }
     }
     this.layer(land, art.foreground, 1.3, time);
-    const night = 1 - state.day;
     land.save();
     land.globalCompositeOperation = 'source-atop';
-    land.fillStyle = `rgba(28,32,65,${night * NIGHT_SHADE})`;
+    land.fillStyle = css(NIGHT_LIGHT, night * NIGHT_SHADE);
     land.fillRect(0, 0, this.designWidth, DESIGN_HEIGHT);
     const rose = (1 - Math.min(1, Math.max(0, state.sun.up) * 2)) * state.day;
-    land.fillStyle = `rgba(224,115,143,${rose * SUNSET_SHADE})`;
+    land.fillStyle = css(mix(DUSK_ROSE, state.sky.light, 0.45), rose * SUNSET_SHADE);
     land.fillRect(0, 0, this.designWidth, DESIGN_HEIGHT);
+    land.restore();
+    land.save();
+    land.translate(groundX, groundY);
+    lighting.drawSpill(land);
     land.restore();
     ctx.drawImage(this.land.canvas, 0, 0);
     if (chapter === 2) this.life.drawCranes(ctx, time);
     ctx.save();
-    ctx.translate(Math.round(this.parallaxX * 0.75), Math.round(this.parallaxY * 0.75));
-    this.interactions.drawLanterns(ctx, scene, chapter, time, night, assets);
+    ctx.translate(groundX, groundY);
+    lighting.drawLanterns(ctx, assets);
     ctx.restore();
-    this.interactions.drawPetals(ctx, chapter, time, night);
+    this.interactions.drawPetals(ctx, chapter, time, night, groundX, groundY);
     this.life.drawFireflies(ctx, time, night, chapter, this.designWidth);
   }
 }
