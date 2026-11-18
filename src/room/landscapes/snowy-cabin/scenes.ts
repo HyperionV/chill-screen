@@ -20,16 +20,14 @@ export type SceneId = 'clearing' | 'pond' | 'sled' | 'chimney' | 'aurora';
 export interface SceneSpec {
   id: SceneId;
   name: string;
-  /** Gentle horizontal camera offset at rest, in design pixels. */
-  driftAmp: number;
 }
 
 export const SCENES: readonly SceneSpec[] = [
-  { id: 'clearing', name: 'Cabin Clearing', driftAmp: 4 },
-  { id: 'pond', name: 'Frozen Pond', driftAmp: 5 },
-  { id: 'sled', name: 'Sled Hill', driftAmp: 5 },
-  { id: 'chimney', name: 'Night Chimney', driftAmp: 3 },
-  { id: 'aurora', name: 'Aurora Night', driftAmp: 4 },
+  { id: 'clearing', name: 'Cabin Clearing' },
+  { id: 'pond', name: 'Frozen Pond' },
+  { id: 'sled', name: 'Sled Hill' },
+  { id: 'chimney', name: 'Night Chimney' },
+  { id: 'aurora', name: 'Aurora Night' },
 ];
 
 export const CHAPTERS: readonly Chapter[] = SCENES.map((s) => ({

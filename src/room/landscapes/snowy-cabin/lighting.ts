@@ -1,9 +1,18 @@
 import { css, type RGB } from '../../../render/color';
 import { clamp } from '../../../world/math';
 import type { SkyState } from '../../sky';
+import { breeze } from '../../wind';
 import type { Atmosphere } from './atmosphere';
 import { HORIZON, type SceneId } from './scenes';
 import type { CabinSpec, SnowySprites, VillageBuilding } from './sprites';
+
+/** Maximum swing of the lantern body and light in stage pixels. */
+const LANTERN_SWAY_PX = 2;
+
+/** Stem and body dimensions from the original cabin sprite, in design pixels. */
+const LANTERN_STEM_LENGTH = 2;
+const LANTERN_BODY_WIDTH = 3;
+const LANTERN_BODY_HEIGHT = 4;
 
 /** Draws winter horizon washes, aurora curtains, and shooting stars before terrain. */
 export function drawSkyExtras(
@@ -14,7 +23,6 @@ export function drawSkyExtras(
   time: number,
   scene: SceneId,
   atmosphere: Atmosphere,
-  px: number,
 ): void {
   const hy = Math.round(h * HORIZON);
   const night = 1 - state.day;
@@ -35,13 +43,43 @@ export function drawSkyExtras(
       ? (night - 0.45) * 0.65
       : 0;
   if (auroraStrength > 0.03) {
-    ctx.save();
-    ctx.translate(Math.round(px * 0.15), 0);
     atmosphere.drawAurora(ctx, time, auroraStrength);
-    ctx.restore();
   }
 
   atmosphere.drawShootingStars(ctx);
+}
+
+export function porchLanternSway(time: number, anchorX: number, unit: number): number {
+  return Math.round(breeze(time, anchorX) * LANTERN_SWAY_PX * Math.min(1, unit));
+}
+
+/** Draws the moving stem and lantern below the mounting plate on the cabin sprite. */
+export function drawPorchLantern(
+  ctx: CanvasRenderingContext2D,
+  unit: number,
+  spec: CabinSpec,
+  cx: number,
+  cy: number,
+  time: number,
+  glideX: number,
+): void {
+  if (spec.lanternX === null || spec.lanternY === null) return;
+  const anchorX = cx + (spec.lanternX - spec.w / 2) * unit;
+  const anchorY = cy + (spec.lanternY - spec.h) * unit;
+  const x = Math.round(anchorX);
+  const sway = porchLanternSway(time, anchorX - glideX, unit);
+  const bodyY = anchorY - LANTERN_BODY_HEIGHT / 2 * unit;
+  const stemTop = Math.round(bodyY - LANTERN_STEM_LENGTH * unit);
+  const stemMiddle = Math.round(bodyY - LANTERN_STEM_LENGTH / 2 * unit);
+  const bodyTop = Math.round(bodyY);
+  const stemWidth = Math.max(1, Math.round(unit));
+  const bodyWidth = Math.max(1, Math.round(LANTERN_BODY_WIDTH * unit));
+  const bodyHeight = Math.max(1, Math.round(LANTERN_BODY_HEIGHT * unit));
+
+  ctx.fillStyle = '#262b34';
+  ctx.fillRect(x, stemTop, stemWidth, stemMiddle - stemTop);
+  ctx.fillRect(x + Math.trunc(sway / 2), stemMiddle, stemWidth, bodyTop - stemMiddle);
+  ctx.fillRect(x + sway - Math.floor(bodyWidth / 2), bodyTop, bodyWidth, bodyHeight);
 }
 
 /** Tints the offscreen land layer to the hour of day (deep blue night, rose/gold sunset). */
@@ -88,11 +126,11 @@ export function drawPostTintLights(
   const night = 1 - state.day;
 
   if (scene === 'clearing') {
-    paintCabinLights(ctx, unit, sprites.cabinLarge, w * 0.23 + nearOff, h * 0.735, windowGlow, night, time, true);
+    paintCabinLights(ctx, unit, sprites.cabinLarge, w * 0.23 + nearOff, h * 0.735, windowGlow, night, time, true, nearOff);
   } else if (scene === 'chimney') {
-    paintCabinLights(ctx, unit, sprites.cabinClose, w * 0.22 + nearOff, h * 0.78, windowGlow, Math.max(night, 0.5), time, true);
+    paintCabinLights(ctx, unit, sprites.cabinClose, w * 0.22 + nearOff, h * 0.78, windowGlow, Math.max(night, 0.5), time, true, nearOff);
   } else if (scene === 'aurora') {
-    paintCabinLights(ctx, unit, sprites.cabinSmall, w * 0.22 + nearOff, h * 0.675, windowGlow, Math.max(night, 0.5), time, false);
+    paintCabinLights(ctx, unit, sprites.cabinSmall, w * 0.22 + nearOff, h * 0.675, windowGlow, Math.max(night, 0.5), time, false, nearOff);
   } else if (scene === 'sled') {
     const villageStrength = clamp(Math.max(windowGlow * 0.8, night * 0.95 + 0.25), 0, 1);
     if (villageStrength > 0.08) {
@@ -114,6 +152,7 @@ function paintCabinLights(
   nightWeight: number,
   time: number,
   snowSpill: boolean,
+  glideX: number,
 ): void {
   const tlX = Math.round(cx - (spec.w * u) / 2);
   const tlY = Math.round(cy - spec.h * u);
@@ -154,8 +193,9 @@ function paintCabinLights(
   }
 
   if (spec.lanternX !== null && spec.lanternY !== null) {
-    const lx = Math.round(tlX + spec.lanternX * u);
-    const ly = Math.round(tlY + spec.lanternY * u);
+    const anchorX = cx + (spec.lanternX - spec.w / 2) * u;
+    const lx = Math.round(anchorX) + porchLanternSway(time, anchorX - glideX, u);
+    const ly = Math.round(cy + (spec.lanternY - spec.h) * u);
     const lanternStrength = (0.35 + 0.65 * nightWeight) * flicker;
     ctx.fillStyle = `rgba(255,196,92,${(0.22 * lanternStrength).toFixed(3)})`;
     ctx.fillRect(lx - Math.round(5 * u), ly - Math.round(5 * u), Math.round(11 * u), Math.round(11 * u));

@@ -2,10 +2,11 @@ import { css, mix, type RGB } from '../../../render/color';
 import { clamp } from '../../../world/math';
 import { fbm, hash } from '../../journeys/noise';
 import type { SkyState } from '../../sky';
+import { breeze } from '../../wind';
 import type { Atmosphere } from './atmosphere';
 import type { CreatureSprites, SpriteBox } from './creature-sprites';
 import type { Creatures, DrawItem } from './creatures';
-import { drawPostTintLights, drawSkyExtras, tintLand } from './lighting';
+import { drawPorchLantern, drawPostTintLights, drawSkyExtras, tintLand } from './lighting';
 import { HORIZON, type HitBox, type SceneId } from './scenes';
 import type { SnowySprites, VillageBuilding } from './sprites';
 
@@ -15,6 +16,11 @@ const SNOW_SHADE: RGB = [158, 182, 212];
 const RIDGE_BASE: RGB = [142, 168, 200];
 const ICE_BASE: RGB = [132, 164, 196];
 const ICE_DEEP: RGB = [98, 130, 166];
+
+/** Maximum crown travel in stage pixels, from the ridge to the foreground. */
+const FAR_SWAY_PX = 1;
+const MID_SWAY_PX = 2;
+const NEAR_SWAY_PX = 3;
 
 export interface SceneAnchorInfo {
   chimney: { x: number; y: number } | null;
@@ -32,6 +38,7 @@ function drawProp(
   y: number,
   unit: number,
   shadow = true,
+  swayPx = 0,
 ): void {
   const dw = Math.max(1, Math.round(sp.w * unit));
   const dh = Math.max(1, Math.round(sp.h * unit));
@@ -41,26 +48,47 @@ function drawProp(
     ctx.fillStyle = 'rgba(26,42,72,0.20)';
     ctx.fillRect(dx + Math.round(dw * 0.1), Math.round(y) - 1, Math.round(dw * 0.8), Math.max(1, Math.round(unit)));
   }
-  ctx.drawImage(sp.canvas, dx, dy, dw, dh);
-}
-
-/** Draws a pre-sized tree sprite with bottom-centre at (x, y) and gentle crown sway. */
-function drawTree(ctx: CanvasRenderingContext2D, sp: SpriteBox, x: number, y: number, swayPx: number): void {
-  const dx = Math.round(x - sp.w / 2);
-  const top = Math.round(y - sp.h);
-  const strip = 6;
-  if (Math.abs(swayPx) < 0.5) {
-    ctx.drawImage(sp.canvas, dx, top);
+  const sway = Math.abs(swayPx);
+  const tip = Math.round(sway);
+  if (tip === 0) {
+    ctx.drawImage(sp.canvas, dx, dy, dw, dh);
     return;
   }
-  for (let sy = 0; sy < sp.h; sy += strip) {
-    const k = 1 - (sy + strip * 0.5) / sp.h;
-    const rows = Math.min(strip, sp.h - sy);
-    ctx.drawImage(sp.canvas, 0, sy, sp.w, rows, dx + Math.round(swayPx * k * k), top + sy, sp.w, rows);
+
+  // Bend quadratically toward the crown and draw one strip per whole-pixel offset.
+  const direction = Math.sign(swayPx);
+  let sourceTop = 0;
+  let top = 0;
+  for (let offset = tip; offset >= 0; offset--) {
+    const sourceBottom = offset === 0 ? sp.h : Math.ceil(sp.h * (1 - Math.sqrt((offset - 0.5) / sway)));
+    const bottom = Math.round(sourceBottom * dh / sp.h);
+    if (bottom > top) {
+      ctx.drawImage(sp.canvas, 0, sourceTop, sp.w, sourceBottom - sourceTop, dx + offset * direction, dy + top, dw, bottom - top);
+    }
+    sourceTop = sourceBottom;
+    top = bottom;
   }
 }
 
-/** Renders the 5 parallax depth layers, set pieces, snowdrifts, pond ice, village, and warm lighting for any scene. */
+/** Draws a pre-sized tree with a fixed base and a crown that bends in the breeze. */
+function drawTree(ctx: CanvasRenderingContext2D, sp: SpriteBox, x: number, y: number, time: number, tipPx: number): void {
+  drawProp(ctx, sp, x, y, 1, false, breeze(time, x) * tipPx);
+}
+
+function queuePlant(
+  out: DrawItem[],
+  sp: SpriteBox,
+  x: number,
+  y: number,
+  time: number,
+  tipPx: number,
+  unit = 1,
+  shadow = false,
+): void {
+  out.push({ y, draw: (L) => drawProp(L, sp, x, y, unit, shadow, breeze(time, x) * tipPx) });
+}
+
+/** Renders the terrain, set pieces, snowdrifts, pond ice, village, and warm lighting for any scene. */
 export class Scenery {
   private w = 0;
   private h = 0;
@@ -97,9 +125,8 @@ export class Scenery {
   }
 
   /** Computes interactive hitboxes and chimney/lantern anchor coordinates for `scene`. */
-  anchors(scene: SceneId, sprites: SnowySprites, px: number): SceneAnchorInfo {
+  anchors(scene: SceneId, sprites: SnowySprites): SceneAnchorInfo {
     const u = this.unit;
-    const midOff = px * 0.85;
     const windowBoxes: HitBox[] = [];
     let chimney: { x: number; y: number } | null = null;
     let chimneyBox: HitBox | null = null;
@@ -107,7 +134,7 @@ export class Scenery {
     let glowPoint: { x: number; y: number } | null = null;
 
     if (scene === 'clearing') {
-      const cx = this.w * 0.23 + midOff;
+      const cx = this.w * 0.23;
       const cy = this.h * 0.735;
       const spec = sprites.cabinLarge;
       const tlX = cx - (spec.w * u) / 2;
@@ -120,11 +147,11 @@ export class Scenery {
       if (spec.lanternX !== null && spec.lanternY !== null) {
         glowPoint = { x: tlX + spec.lanternX * u, y: tlY + spec.lanternY * u };
       }
-      const smX = this.w * 0.75 + midOff;
+      const smX = this.w * 0.75;
       const smY = this.h * 0.80;
       snowmanBox = { x: smX - 12 * u, y: smY - 28 * u, w: 24 * u, h: 28 * u };
     } else if (scene === 'chimney') {
-      const cx = this.w * 0.22 + midOff;
+      const cx = this.w * 0.22;
       const cy = this.h * 0.78;
       const spec = sprites.cabinClose;
       const tlX = cx - (spec.w * u) / 2;
@@ -136,7 +163,7 @@ export class Scenery {
         glowPoint = { x: tlX + (win.x + win.w * 0.5) * u, y: tlY + (win.y + win.h * 0.5) * u };
       }
     } else if (scene === 'aurora') {
-      const cx = this.w * 0.22 + midOff;
+      const cx = this.w * 0.22;
       const cy = this.h * 0.675;
       const spec = sprites.cabinSmall;
       const tlX = cx - (spec.w * u) / 2;
@@ -159,9 +186,8 @@ export class Scenery {
     time: number,
     scene: SceneId,
     atmosphere: Atmosphere,
-    px: number,
   ): void {
-    drawSkyExtras(ctx, this.w, this.h, state, time, scene, atmosphere, px);
+    drawSkyExtras(ctx, this.w, this.h, state, time, scene, atmosphere);
   }
 
   /** Draws all land layers, props, and cast into offscreen `L`, tints it, and paints post-tint glows. */
@@ -176,7 +202,6 @@ export class Scenery {
     creatures: Creatures,
     atmosphere: Atmosphere,
     pointer: { x: number; y: number } | null,
-    px: number,
     windowGlow: number,
     snowmanAnim: number,
     cameraGlideX: number,
@@ -185,10 +210,10 @@ export class Scenery {
     L.clearRect(0, 0, this.w, this.h);
 
     const hy = Math.round(this.h * HORIZON);
-    const farOff = Math.round(px * 0.25 + cameraGlideX * 0.25);
-    const midFarOff = Math.round(px * 0.45 + cameraGlideX * 0.5);
-    const nearOff = Math.round(px * 0.85 + cameraGlideX);
-    const fgOff = Math.round(px * 1.25 + cameraGlideX * 1.25);
+    const farOff = Math.round(cameraGlideX * 0.25);
+    const midFarOff = Math.round(cameraGlideX * 0.5);
+    const nearOff = Math.round(cameraGlideX);
+    const fgOff = Math.round(cameraGlideX * 1.25);
 
     const ridgeCol = css(mix(RIDGE_BASE, state.sky.horizon, 0.42));
     const ridgeLit = css(mix(SNOW_TOP, state.sky.horizon, 0.28));
@@ -242,12 +267,12 @@ export class Scenery {
       if ((scene === 'clearing' || scene === 'chimney') && frac > 0.38 && frac < 0.62) continue;
       if (scene === 'sled' && frac > 0.63 && frac < 0.9) continue;
       const x = Math.round(frac * this.w) + midFarOff;
-      const list = i % 3 === 0 ? sprites.pinesMid : sprites.pinesFar;
+      const mid = i % 3 === 0;
+      const list = mid ? sprites.pinesMid : sprites.pinesFar;
       const sp = list[Math.floor(hash(i * 31 + 5) * list.length)];
       const slopeBoost = scene === 'sled' ? (1 - frac) * -0.05 * this.h : 0;
       const baseY = Math.round(hy + (6 + hash(i * 23) * 14) * u + slopeBoost);
-      const sway = Math.sin(time * 0.6 + i) * 0.8 * u;
-      drawTree(L, sp, x, baseY, sway);
+      drawTree(L, sp, x, baseY, time, mid ? MID_SWAY_PX : FAR_SWAY_PX);
     }
   }
 
@@ -349,25 +374,30 @@ export class Scenery {
     out: DrawItem[],
   ): void {
     const u = this.unit;
-
     if (scene === 'clearing') {
       const cabinX = this.w * 0.23 + nearOff;
       const cabinY = this.h * 0.735;
-      out.push({ y: cabinY, draw: (L) => drawProp(L, sprites.cabinLarge, cabinX, cabinY, u, true) });
+      out.push({
+        y: cabinY,
+        draw: (L) => {
+          drawProp(L, sprites.cabinLarge, cabinX, cabinY, u, true);
+          drawPorchLantern(L, u, sprites.cabinLarge, cabinX, cabinY, time, nearOff);
+        },
+      });
       out.push({ y: this.h * 0.79, draw: (L) => drawProp(L, sprites.woodpile, this.w * 0.09 + nearOff, this.h * 0.79, u) });
       out.push({ y: this.h * 0.82, draw: (L) => drawProp(L, sprites.axeStump, this.w * 0.165 + nearOff, this.h * 0.82, u) });
       const smX = this.w * 0.75 + nearOff;
       const smY = this.h * 0.80;
       out.push({ y: smY, draw: (L) => this.drawAnimatedSnowman(L, sprites, smX, smY, snowmanAnim) });
-      out.push({ y: this.h * 0.70, draw: (L) => drawTree(L, sprites.pinesNear[1], this.w * 0.05 + nearOff, this.h * 0.70, Math.sin(time) * u) });
-      out.push({ y: this.h * 0.74, draw: (L) => drawTree(L, sprites.birches[1], this.w * 0.88 + nearOff, this.h * 0.74, Math.sin(time + 1) * u) });
-      out.push({ y: this.h * 0.81, draw: (L) => drawProp(L, sprites.shrubs[0], this.w * 0.84 + nearOff, this.h * 0.81, u) });
+      queuePlant(out, sprites.pinesNear[1], this.w * 0.05 + nearOff, this.h * 0.70, time, NEAR_SWAY_PX);
+      queuePlant(out, sprites.birches[1], this.w * 0.88 + nearOff, this.h * 0.74, time, NEAR_SWAY_PX);
+      queuePlant(out, sprites.shrubs[0], this.w * 0.84 + nearOff, this.h * 0.81, time, MID_SWAY_PX, u, true);
     } else if (scene === 'pond') {
       out.push({ y: this.h * 0.745, draw: (L) => drawProp(L, sprites.rowboat, this.w * 0.14 + nearOff, this.h * 0.745, u) });
       out.push({ y: this.h * 0.735, draw: (L) => drawProp(L, sprites.bench, this.w * 0.79 + nearOff, this.h * 0.735, u) });
-      out.push({ y: this.h * 0.78, draw: (L) => drawTree(L, sprites.birches[0], this.w * 0.07 + nearOff, this.h * 0.78, Math.sin(time) * u) });
-      out.push({ y: this.h * 0.79, draw: (L) => drawTree(L, sprites.pinesNear[2], this.w * 0.93 + nearOff, this.h * 0.79, Math.sin(time + 2) * u) });
-      out.push({ y: this.h * 0.83, draw: (L) => drawProp(L, sprites.shrubs[1], this.w * 0.73 + nearOff, this.h * 0.83, u) });
+      queuePlant(out, sprites.birches[0], this.w * 0.07 + nearOff, this.h * 0.78, time, NEAR_SWAY_PX);
+      queuePlant(out, sprites.pinesNear[2], this.w * 0.93 + nearOff, this.h * 0.79, time, NEAR_SWAY_PX);
+      queuePlant(out, sprites.shrubs[1], this.w * 0.73 + nearOff, this.h * 0.83, time, MID_SWAY_PX, u, true);
     } else if (scene === 'sled') {
       const slopeTrees: { x: number; y: number; idx: number }[] = [
         { x: 0.05, y: 0.66, idx: 2 },
@@ -377,9 +407,9 @@ export class Scenery {
         { x: 0.96, y: 0.79, idx: 1 },
       ];
       for (const t of slopeTrees) {
-        out.push({ y: this.h * t.y, draw: (L) => drawTree(L, sprites.pinesNear[t.idx], this.w * t.x + nearOff, this.h * t.y, Math.sin(time + t.x * 5) * u) });
+        queuePlant(out, sprites.pinesNear[t.idx], this.w * t.x + nearOff, this.h * t.y, time, NEAR_SWAY_PX);
       }
-      out.push({ y: this.h * 0.83, draw: (L) => drawProp(L, sprites.shrubs[2], this.w * 0.76 + nearOff, this.h * 0.83, u) });
+      queuePlant(out, sprites.shrubs[2], this.w * 0.76 + nearOff, this.h * 0.83, time, MID_SWAY_PX, u, true);
     } else if (scene === 'chimney') {
       const cx = this.w * 0.22 + nearOff;
       const cy = this.h * 0.78;
@@ -391,14 +421,14 @@ export class Scenery {
         { x: 0.04, y: 0.82, idx: 0 },
       ];
       for (const t of grove) {
-        out.push({ y: this.h * t.y, draw: (L) => drawTree(L, sprites.pinesNear[t.idx], this.w * t.x + nearOff, this.h * t.y, Math.sin(time + t.x * 7) * 0.7 * u) });
+        queuePlant(out, sprites.pinesNear[t.idx], this.w * t.x + nearOff, this.h * t.y, time, NEAR_SWAY_PX);
       }
     } else {
       out.push({ y: this.h * 0.675, draw: (L) => drawProp(L, sprites.cabinSmall, this.w * 0.22 + nearOff, this.h * 0.675, u, true) });
-      out.push({ y: this.h * 0.76, draw: (L) => drawTree(L, sprites.pinesNear[0], this.w * 0.07 + nearOff, this.h * 0.76, Math.sin(time) * 0.7 * u) });
-      out.push({ y: this.h * 0.77, draw: (L) => drawTree(L, sprites.pinesNear[2], this.w * 0.92 + nearOff, this.h * 0.77, Math.sin(time + 1.5) * 0.7 * u) });
-      out.push({ y: this.h * 0.82, draw: (L) => drawProp(L, sprites.shrubs[0], this.w * 0.30 + nearOff, this.h * 0.82, u) });
-      out.push({ y: this.h * 0.82, draw: (L) => drawProp(L, sprites.shrubs[1], this.w * 0.72 + nearOff, this.h * 0.82, u) });
+      queuePlant(out, sprites.pinesNear[0], this.w * 0.07 + nearOff, this.h * 0.76, time, NEAR_SWAY_PX);
+      queuePlant(out, sprites.pinesNear[2], this.w * 0.92 + nearOff, this.h * 0.77, time, NEAR_SWAY_PX);
+      queuePlant(out, sprites.shrubs[0], this.w * 0.30 + nearOff, this.h * 0.82, time, MID_SWAY_PX, u, true);
+      queuePlant(out, sprites.shrubs[1], this.w * 0.72 + nearOff, this.h * 0.82, time, MID_SWAY_PX, u, true);
     }
   }
 
@@ -448,8 +478,7 @@ export class Scenery {
     fgOff: number,
   ): void {
     const u = this.unit;
-    const sway = Math.sin(time * 0.9) * 1.2 * u;
-    drawTree(L, sprites.pinesNear[0], this.w * 0.02 + fgOff, this.h + 18 * u, sway);
-    drawTree(L, sprites.pinesNear[1], this.w * 0.98 + fgOff, this.h + 18 * u, -sway);
+    drawTree(L, sprites.pinesNear[0], this.w * 0.02 + fgOff, this.h + 18 * u, time, NEAR_SWAY_PX);
+    drawTree(L, sprites.pinesNear[1], this.w * 0.98 + fgOff, this.h + 18 * u, time, NEAR_SWAY_PX);
   }
 }

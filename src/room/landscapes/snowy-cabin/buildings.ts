@@ -153,8 +153,6 @@ export function buildCabinLarge(): CabinSpec {
 
   ctx.fillStyle = '#262b34';
   ctx.fillRect(98, 43, 4, 1);
-  ctx.fillRect(100, 44, 1, 2);
-  ctx.fillRect(99, 46, 3, 4);
 
   ctx.fillStyle = '#e8f1fa';
   ctx.fillRect(8, 71, 68, 4);
