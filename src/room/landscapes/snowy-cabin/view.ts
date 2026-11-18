@@ -2,7 +2,7 @@ import { mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hourNow } from '../../../scene/clock';
 import type { Look } from '../../../wallpapers/look';
-import { approach, clamp } from '../../../world/math';
+import { approach } from '../../../world/math';
 import { ChapterTitle } from '../../journeys/chapter-title';
 import { Route } from '../../journeys/route';
 import type { NightSky } from '../../night-sky';
@@ -11,6 +11,7 @@ import type { OutsideView, ViewFrame } from '../../view';
 import { Atmosphere } from './atmosphere';
 import { buildCreatureSprites, type CreatureSprites } from './creature-sprites';
 import { Creatures } from './creatures';
+import { porchLanternSway } from './lighting';
 import {
   CHAPTERS,
   DESIGN_ROWS,
@@ -24,7 +25,6 @@ import {
 import { Scenery } from './scenery';
 import { buildSnowySprites, type SnowySprites } from './sprites';
 
-const MAX_PARALLAX_PX = 8;
 const TRANSITION_GLIDE_PX = 18;
 
 const luma = (c: RGB): number => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
@@ -52,7 +52,6 @@ export class SnowyCabinView implements OutsideView {
   private creatureSprites: CreatureSprites | null = null;
   private builtUnit = -1;
 
-  private parallaxX = 0;
   private windowLit = true;
   private windowGlow = 1;
   private snowmanAnim = 0;
@@ -93,7 +92,7 @@ export class SnowyCabinView implements OutsideView {
   press(x: number, y: number): void {
     if (this.w <= 0 || this.h <= 0 || !this.sprites) return;
     const scene = SCENES[this.route.now.index].id;
-    const anchors = this.scenery.anchors(scene, this.sprites, this.parallaxX);
+    const anchors = this.scenery.anchors(scene, this.sprites);
     const pad = 5 * this.unit;
 
     for (const winBox of anchors.windowBoxes) {
@@ -150,16 +149,11 @@ export class SnowyCabinView implements OutsideView {
       this.atmosphere.clearSceneParticles();
     }
 
-    const targetParallax = frame.pointer
-      ? clamp(((frame.pointer.x / this.w) - 0.5) * 2, -1, 1) * MAX_PARALLAX_PX * this.unit
-      : 0;
-    this.parallaxX = approach(this.parallaxX, targetParallax, 4.5, dt);
-
     this.windowGlow = approach(this.windowGlow, this.windowLit ? 1 : 0, 10, dt);
     this.snowmanAnim = Math.max(0, this.snowmanAnim - dt);
 
     const state = this.dome.stateAt(hourNow());
-    const anchors = this.scenery.anchors(currentScene, this.sprites, this.parallaxX);
+    const anchors = this.scenery.anchors(currentScene, this.sprites);
 
     this.creatures.update(dt, frame.time, currentScene, frame.pointer, this.atmosphere);
     this.atmosphere.update(
@@ -175,7 +169,7 @@ export class SnowyCabinView implements OutsideView {
 
     // 1. Sky dome + aurora + shooting stars
     this.dome.draw(ctx, state, frame, this.look);
-    this.scenery.drawSkyExtras(ctx, state, frame.time, currentScene, this.atmosphere, this.parallaxX);
+    this.scenery.drawSkyExtras(ctx, state, frame.time, currentScene, this.atmosphere);
 
     // 2. Current scene terrain, props, cast, and warm glows
     const glideOut = transition.blend > 0 ? -TRANSITION_GLIDE_PX * this.unit * transition.blend : 0;
@@ -190,7 +184,6 @@ export class SnowyCabinView implements OutsideView {
       this.creatures,
       this.atmosphere,
       frame.pointer,
-      this.parallaxX,
       this.windowGlow,
       this.snowmanAnim,
       glideOut,
@@ -212,7 +205,6 @@ export class SnowyCabinView implements OutsideView {
         this.creatures,
         this.atmosphere,
         frame.pointer,
-        this.parallaxX,
         this.windowGlow,
         this.snowmanAnim,
         glideIn,
@@ -225,7 +217,11 @@ export class SnowyCabinView implements OutsideView {
 
     // 4. Chimney smoke, continuous interactive snowfall, and chapter title
     this.atmosphere.drawSmoke(ctx, state);
-    this.atmosphere.drawSnowAndPuffs(ctx, state, this.windowLit ? anchors.glowPoint : null);
+    const glowPoint = this.windowLit ? anchors.glowPoint : null;
+    const glowDrift = glowPoint && currentScene === 'clearing'
+      ? Math.round(glideOut) + porchLanternSway(frame.time, glowPoint.x, this.unit)
+      : 0;
+    this.atmosphere.drawSnowAndPuffs(ctx, state, glowPoint, glowDrift);
     this.title.draw(ctx, dt, this.w, this.h, transition.name);
 
     return this.look;

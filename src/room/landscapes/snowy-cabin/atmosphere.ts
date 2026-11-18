@@ -2,6 +2,7 @@ import { css, mix, type RGB } from '../../../render/color';
 import { clamp, rand, seededRandom } from '../../../world/math';
 import { hash } from '../../journeys/noise';
 import type { SkyState } from '../../sky';
+import { breeze, gust } from '../../wind';
 
 const SNOW_COUNT = 96;
 const MAX_SMOKE = 28;
@@ -10,6 +11,23 @@ const MAX_SNOW_PUFFS = 36;
 const MAX_FOOTPRINTS = 64;
 const MAX_METEORS = 8;
 const MAX_BREATHS = 10;
+const LOOSE_SNOW_COUNT = 6;
+
+/** Horizontal wind speeds in design pixels per second, before scaling to the stage. */
+const SNOW_CALM_DRIFT = 1.5;
+const SNOW_GUST_DRIFT = 7;
+const SNOW_BREEZE_SPEED = 4;
+const SMOKE_GUST_DRIFT = 5;
+const SMOKE_BREEZE_SPEED = 4;
+const PUFF_GUST_DRIFT = 2;
+const POWDER_CALM_DRIFT = 10;
+const POWDER_GUST_DRIFT = 20;
+
+/** Loose snow stays faint and within two stage pixels of its near-ground path. */
+const POWDER_LIFT_PX = 2;
+const POWDER_PEAK_ALPHA = 0.36;
+const POWDER_PATH_TOP = 0.73;
+const POWDER_PATH_HEIGHT = 0.24;
 
 const POINTER_SWIRL_RADIUS = 46;
 const POINTER_SWIRL_PUSH = 88;
@@ -22,6 +40,12 @@ interface Snowflake {
   speed: number;
   phase: number;
   near: boolean;
+}
+
+interface LooseSnow {
+  x: number;
+  y: number;
+  lift: number;
 }
 
 interface SmokePuff {
@@ -92,6 +116,7 @@ export class Atmosphere {
   private unit = 1;
 
   private readonly flakes: Snowflake[] = [];
+  private readonly looseSnow: LooseSnow[] = [];
   private readonly smoke: SmokePuff[] = [];
   private readonly rings: SmokeRing[] = [];
   private readonly puffs: SnowPuffParticle[] = [];
@@ -101,6 +126,7 @@ export class Atmosphere {
 
   private smokeCooldown = 0;
   private nightMeteorWait = 3.5;
+  private windStrength = 0;
 
   resize(w: number, h: number, unit: number): void {
     this.w = w;
@@ -119,6 +145,9 @@ export class Atmosphere {
           phase: rnd() * Math.PI * 2,
           near,
         });
+      }
+      for (let i = 0; i < LOOSE_SNOW_COUNT; i++) {
+        this.looseSnow.push({ x: rnd(), y: POWDER_PATH_TOP + rnd() * POWDER_PATH_HEIGHT, lift: 0 });
       }
     } else {
       for (const f of this.flakes) {
@@ -245,11 +274,14 @@ export class Atmosphere {
     nightFactor: number,
   ): void {
     const u = this.unit;
+    const wind = gust(time);
+    this.windStrength = wind;
     const swirlR = POINTER_SWIRL_RADIUS * u;
+    const snowDrift = SNOW_CALM_DRIFT + wind * SNOW_GUST_DRIFT;
 
     // 1. Snowfall + pointer swirl
     for (const f of this.flakes) {
-      const sway = Math.sin(time * 1.15 + f.phase) * 5.5 * u;
+      const sway = breeze(time, f.x) * SNOW_BREEZE_SPEED;
       if (pointer) {
         const dx = f.x - pointer.x;
         const dy = f.y - pointer.y;
@@ -265,7 +297,7 @@ export class Atmosphere {
       }
       f.vx *= Math.exp(-3.2 * dt);
       f.vy *= Math.exp(-3.2 * dt);
-      f.x += (f.vx + sway - 3.5 * u) * dt;
+      f.x += (f.vx + (snowDrift + sway) * u) * dt;
       f.y += (f.vy + f.speed * u) * dt;
 
       if (f.y > this.h + 2) {
@@ -274,6 +306,11 @@ export class Atmosphere {
       }
       if (f.x < -3) f.x = this.w + 2;
       if (f.x > this.w + 3) f.x = -2;
+    }
+    const powderStep = (POWDER_CALM_DRIFT + wind * POWDER_GUST_DRIFT) * u * dt / this.w;
+    for (const p of this.looseSnow) {
+      p.x = (p.x + powderStep) % 1;
+      p.lift = breeze(time, p.x * this.w) * POWDER_LIFT_PX;
     }
 
     // 2. Chimney smoke & rings
@@ -287,7 +324,8 @@ export class Atmosphere {
     for (let i = this.smoke.length - 1; i >= 0; i--) {
       const s = this.smoke[i];
       s.age += dt;
-      s.x += (s.vx + Math.sin(time * 1.4 + s.age * 2) * 3 * u) * dt;
+      const bend = (wind * SMOKE_GUST_DRIFT + breeze(time, s.x) * SMOKE_BREEZE_SPEED) * (s.age / s.life);
+      s.x += (s.vx + bend * u) * dt;
       s.y += s.vy * dt;
       s.size += 0.55 * u * dt;
       if (s.age >= s.life) this.smoke.splice(i, 1);
@@ -295,7 +333,7 @@ export class Atmosphere {
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i];
       r.age += dt;
-      r.x += 5.5 * u * dt;
+      r.x += (5.5 + wind * SMOKE_GUST_DRIFT) * u * dt;
       r.y += r.vy * dt;
       r.rx += 2.2 * u * dt;
       r.ry += 0.9 * u * dt;
@@ -307,7 +345,7 @@ export class Atmosphere {
       const p = this.puffs[i];
       p.age += dt;
       p.vy += 38 * u * dt;
-      p.x += p.vx * dt;
+      p.x += (p.vx + wind * PUFF_GUST_DRIFT * u) * dt;
       p.y += p.vy * dt;
       if (p.age >= p.life) this.puffs.splice(i, 1);
     }
@@ -337,7 +375,7 @@ export class Atmosphere {
     for (let i = this.breaths.length - 1; i >= 0; i--) {
       const b = this.breaths[i];
       b.age += dt;
-      b.x += b.vx * dt;
+      b.x += (b.vx + wind * PUFF_GUST_DRIFT * u) * dt;
       b.y += b.vy * dt;
       if (b.age >= b.life) this.breaths.splice(i, 1);
     }
@@ -452,7 +490,12 @@ export class Atmosphere {
   }
 
   /** Draws snow click puffs, cold breath puffs, and continuous snowfall. */
-  drawSnowAndPuffs(ctx: CanvasRenderingContext2D, state: SkyState, glowPoint: { x: number; y: number } | null): void {
+  drawSnowAndPuffs(
+    ctx: CanvasRenderingContext2D,
+    state: SkyState,
+    glowPoint: { x: number; y: number } | null,
+    glowDrift: number,
+  ): void {
     const flakeCol = mix(mix([172, 192, 224], WHITE, state.day), state.sky.light, 0.16);
     const warmGold: RGB = [255, 224, 152];
     const glowR = 54 * this.unit;
@@ -475,7 +518,7 @@ export class Atmosphere {
     for (const f of this.flakes) {
       let col = flakeCol;
       if (glowPoint) {
-        const d = Math.hypot(f.x - glowPoint.x, f.y - glowPoint.y);
+        const d = Math.hypot(f.x - (glowPoint.x + glowDrift), f.y - glowPoint.y);
         if (d < glowR) col = mix(flakeCol, warmGold, (1 - d / glowR) * 0.7);
       }
       ctx.fillStyle = css(col, f.near ? 0.88 : 0.56);
@@ -483,5 +526,13 @@ export class Atmosphere {
       const sy = Math.round(f.y);
       ctx.fillRect(sx, sy, nearSz, nearSz);
     }
+
+    const alpha = ctx.globalAlpha;
+    ctx.globalAlpha = alpha * this.windStrength * this.windStrength * POWDER_PEAK_ALPHA;
+    ctx.fillStyle = '#edf5fc';
+    for (const p of this.looseSnow) {
+      ctx.fillRect(Math.floor(p.x * this.w), Math.round(p.y * this.h - p.lift), 1, 1);
+    }
+    ctx.globalAlpha = alpha;
   }
 }
