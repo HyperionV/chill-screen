@@ -28,7 +28,7 @@ export function drawOpenWater(
   shoreShare: number,
   bottomShare = 1,
   roughness = 1,
-  panX = 0,
+  glideX = 0,
 ): void {
   const hy = Math.round(h * HORIZON);
   const shore = Math.round(h * shoreShare);
@@ -49,11 +49,11 @@ export function drawOpenWater(
     const length = Math.max(1, Math.round((1 + 7 * f * f) * unit * (0.85 + 0.15 * roughness)));
     const drift = (hash(y) - 0.5) * 4 * unit * roughness;
     const count = Math.ceil(span / spacing) + 1;
-    const rowPan = panX * (0.15 + 0.35 * f);
+    const rowGlide = glideX * (0.15 + 0.35 * f);
     for (let j = 0; j < count; j++) {
       const seed = y * 131 + j;
       if (Math.sin(time * (0.7 + hash(seed) * 0.9) * roughness + hash(seed + 0.3) * 6.28) < 0.15) continue;
-      const x = (((((j + hash(seed + 0.7)) * spacing + time * drift + rowPan) % span) + span) % span);
+      const x = (((((j + hash(seed + 0.7)) * spacing + time * drift + rowGlide) % span) + span) % span);
       ctx.fillStyle = hash(seed + 0.9) < 0.35 ? trough : crest;
       ctx.fillRect(Math.round(x), y, length, 1);
     }
@@ -72,7 +72,7 @@ export function drawGlitter(
   day: number,
   time: number,
   shoreShare: number,
-  panX = 0,
+  glideX = 0,
 ): void {
   const useSun = sun.up > -0.02;
   const body = useSun ? sun : moon;
@@ -81,7 +81,7 @@ export function drawGlitter(
   const color = useSun ? mix(sky.light, WHITE, 0.6) : ([226, 232, 255] satisfies RGB);
   const hy = Math.round(h * HORIZON);
   const shore = Math.round(h * shoreShare);
-  const cx = body.u * w + panX * 0.2;
+  const cx = body.u * w + glideX * 0.2;
 
   ctx.save();
   ctx.fillStyle = css(color);
@@ -113,7 +113,7 @@ export function drawBeachSurf(
   time: number,
   shoreShare: number,
   curveAmount = 0,
-  panX = 0,
+  glideX = 0,
 ): RGB {
   const shore = Math.round(h * shoreShare);
   const reach = h * 0.045;
@@ -144,7 +144,7 @@ export function drawBeachSurf(
       ctx.fillStyle = g;
       ctx.fillRect(x, colShore, 2, h - colShore);
     }
-    const wx = x - panX * 0.65;
+    const wx = x - glideX * 0.65;
     const e = Math.round(
       colShore + reach * surge + 2.5 * unit * Math.sin(wx / (40 * unit) + time * 0.2) + 1.5 * unit * Math.sin(wx / (13 * unit) - 1.3),
     );
@@ -165,7 +165,7 @@ export function drawBeachSurf(
     ctx.fillStyle = css(foam, foamAlpha * 0.7 * Math.sin(Math.PI * t));
     for (let x = 0; x < w; x += 3) {
       if (hash(Math.floor(x / 9) + offset * 17) < 0.3) continue;
-      ctx.fillRect(x, Math.round(y0 + 1.5 * unit * Math.sin((x - panX * 0.4) / (30 * unit) + offset * 9)), 3, Math.max(1, Math.round(t * 2)));
+      ctx.fillRect(x, Math.round(y0 + 1.5 * unit * Math.sin((x - glideX * 0.4) / (30 * unit) + offset * 9)), 3, Math.max(1, Math.round(t * 2)));
     }
   }
   return sand;

@@ -11,6 +11,7 @@ import {
   SCENE_LIGHTHOUSE,
   SCENE_TIDE_POOLS,
   SHORE,
+  SHORE_GLIDE,
   type InteractionState,
 } from './types';
 
@@ -215,7 +216,7 @@ export function drawFootprints(
   unit: number,
   footprints: readonly InteractionState['footprints'][number][],
   sandColor: [number, number, number],
-  panX: number,
+  glideX: number,
   seed: number,
 ): void {
   const rnd = seededRandom(seed);
@@ -224,7 +225,7 @@ export function drawFootprints(
 
   // Faint natural beach footprints along the dry sand
   for (let i = 0; i < 6; i++) {
-    const fx = Math.round((0.20 + i * 0.022 + (rnd() - 0.5) * 0.004) * w + panX * 0.65);
+    const fx = Math.round((0.20 + i * 0.022 + (rnd() - 0.5) * 0.004) * w + glideX * 0.65);
     const fy = Math.round((0.88 - i * 0.008 + (i % 2 === 0 ? -0.005 : 0.005)) * h);
     ctx.fillRect(fx, fy, Math.max(2, Math.round(2 * unit)), Math.max(1, Math.round(unit)));
   }
@@ -233,7 +234,7 @@ export function drawFootprints(
     if (fp.age < 0) continue;
     const alpha = clamp01(1 - fp.age / fp.maxAge) * 0.82;
     ctx.fillStyle = css(printCol, alpha);
-    const fx = Math.round(fp.u * w + panX * 0.65);
+    const fx = Math.round(fp.u * w + glideX * 0.65);
     const fy = Math.round(fp.v * h);
     const pw = Math.max(2, Math.round(2 * unit));
     const ph = Math.max(1, Math.round(unit));
@@ -249,7 +250,7 @@ export function drawBottleNote(
   h: number,
   unit: number,
   bottle: InteractionState['bottle'],
-  panX: number,
+  glideX: number,
 ): void {
   if (!bottle.open) return;
   const fade = Math.min(1, bottle.age / 0.25, (bottle.duration - bottle.age) / 0.6);
@@ -261,7 +262,7 @@ export function drawBottleNote(
   const padY = 3 * scale;
   const boxW = textW + padX * 2;
   const boxH = 5 * scale + padY * 2;
-  const cx = Math.round(BOTTLE_POS.u * w + panX * 0.72);
+  const cx = Math.round(BOTTLE_POS.u * w + glideX * SHORE_GLIDE);
   const bx = clamp(Math.round(cx - boxW / 2), 6, Math.max(6, w - boxW - 6));
   const lift = Math.min(1, bottle.age / 0.35) * 4 * unit;
   const by = Math.round(BOTTLE_POS.v * h - 22 * unit - lift - boxH);

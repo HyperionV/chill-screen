@@ -2,12 +2,13 @@ import { mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hourNow } from '../../../scene/clock';
 import type { Look } from '../../../wallpapers/look';
-import { approach } from '../../../world/math';
 import { ChapterTitle } from '../../journeys/chapter-title';
 import { Route } from '../../journeys/route';
 import type { NightSky } from '../../night-sky';
 import { SkyDome, smooth, type Body, type SkyKey } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
+import { gust } from '../../wind';
+import { SEED_DRIFT_CALM, SEED_DRIFT_GUST } from './coastal-wind';
 import { SeasideCreatures } from './creatures';
 import { createInteractions, handleScenePress, updateInteractions } from './interactions';
 import { renderCoveScene, renderLighthouseScene, renderTidePoolsScene } from './scenes-headland';
@@ -17,7 +18,6 @@ import {
   CHAPTERS,
   DESIGN_ROWS,
   HORIZON,
-  PARALLAX_MAX,
   SCENE_BEACH,
   SCENE_COVE,
   SCENE_HARBOUR,
@@ -36,15 +36,14 @@ const GLIDE_PIXELS = 14;
 /**
  * Seaside landscape: five interconnected coastal scenes (Sandy Beach, Fishing Harbour,
  * Lighthouse Point, Tide Pools, Sunset Cove) with a recurring little red crab, coastal wildlife,
- * pointer parallax, interactive props, and smooth 10-second cross-dissolve glides.
+ * interactive props, and smooth 10-second cross-dissolve glides.
  */
 export class SeasideView implements OutsideView {
   private w = 0;
   private h = 0;
   private unit = 1;
   private lastTime = 0;
-  private px = 0;
-  private py = 0;
+  private seedTravel = 0;
 
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [128, 128, 128] };
   private readonly dome: SkyDome;
@@ -97,11 +96,8 @@ export class SeasideView implements OutsideView {
     const state = this.dome.stateAt(hourNow());
     this.updateLook(state.sky, state.sun, state.day);
 
-    // Gentle pointer parallax easing back to rest when pointer disappears
-    const targetPx = frame.pointer ? ((frame.pointer.x / this.w) - 0.5) * -2 * PARALLAX_MAX * this.unit : 0;
-    const targetPy = frame.pointer ? ((frame.pointer.y / this.h) - 0.5) * -1.2 * PARALLAX_MAX * this.unit : 0;
-    this.px = approach(this.px, targetPx, 4.5, dt);
-    this.py = approach(this.py, targetPy, 4.5, dt);
+    const windStrength = gust(frame.time);
+    this.seedTravel += (SEED_DRIFT_CALM + SEED_DRIFT_GUST * windStrength) * dt;
 
     updateInteractions(this.interactions, dt);
     this.creatures.update(now.index, dt, frame.time, this.w, this.h, this.unit, frame.pointer);
@@ -121,12 +117,10 @@ export class SeasideView implements OutsideView {
       h: this.h,
       unit: this.unit,
       time: frame.time,
-      dt,
       state,
-      px: this.px,
-      py: this.py,
-      cameraShiftX: 0,
-      pointer: frame.pointer,
+      windStrength,
+      seedTravel: this.seedTravel,
+      glideX: 0,
       interactions: this.interactions,
     };
 
@@ -135,8 +129,8 @@ export class SeasideView implements OutsideView {
       ctx.drawImage(this.buffersA.scene.canvas, 0, 0);
     } else {
       const glide = GLIDE_PIXELS * this.unit;
-      this.renderScene(now.index, { ...baseCtx, cameraShiftX: -fade * glide }, this.buffersA, this.sprites);
-      this.renderScene(now.next, { ...baseCtx, cameraShiftX: (1 - fade) * glide }, this.buffersB, this.sprites);
+      this.renderScene(now.index, { ...baseCtx, glideX: -fade * glide }, this.buffersA, this.sprites);
+      this.renderScene(now.next, { ...baseCtx, glideX: (1 - fade) * glide }, this.buffersB, this.sprites);
 
       const B = this.blend.ctx;
       B.globalCompositeOperation = 'source-over';

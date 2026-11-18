@@ -7,6 +7,9 @@ import {
   SCENE_HARBOUR,
   SCENE_LIGHTHOUSE,
   SCENE_TIDE_POOLS,
+  BOAT_GLIDE,
+  FAR_GLIDE,
+  SHORE_GLIDE,
   STARTLE_RADIUS,
   avoidRadio,
   drawSprite,
@@ -445,7 +448,7 @@ export class SeasideCreatures {
   }
 
   /** Draws the classic high-sky pixel gulls (daytime). */
-  drawSkyGulls(ctx: CanvasRenderingContext2D, day: number, time: number, w: number, h: number, panX: number): void {
+  drawSkyGulls(ctx: CanvasRenderingContext2D, day: number, time: number, w: number, h: number, glideX: number): void {
     if (day < 0.5) return;
     ctx.fillStyle = `rgba(36,40,50,${(0.8 * day).toFixed(3)})`;
     for (const g of this.skyGulls) {
@@ -453,20 +456,20 @@ export class SeasideCreatures {
       const gliding = Math.sin(time * 0.3 + g.flap) > 0.3 && g.hop <= 0;
       const beat = Math.floor((((time * 4 + g.flap) % 4) + 4) % 4);
       const pose = gliding || beat === 3 ? 1 : beat;
-      const x = Math.round(g.x * w + panX * 0.25);
+      const x = Math.round(g.x * w + glideX * FAR_GLIDE);
       const y = Math.round(g.y * h - g.hop * 3);
       for (const [dx, dy] of SKY_GULL_POSES[pose]) ctx.fillRect(x + dx, y + dy, 1, 1);
     }
   }
 
   /** Draws tide-pool tiny fish directly onto water before rocks/land tinting. */
-  drawTidePoolFish(ctx: CanvasRenderingContext2D, w: number, h: number, unit: number, sprites: SeasideSprites, panX: number): void {
+  drawTidePoolFish(ctx: CanvasRenderingContext2D, w: number, h: number, unit: number, sprites: SeasideSprites, glideX: number): void {
     for (const f of this.tideFish) {
       const sprite = f.colorIndex === 0 ? sprites.tinyFishA : sprites.tinyFishB;
       drawSprite(
         ctx,
         sprite,
-        f.u * w - (sprite.width * unit) / 2 + panX * 0.65,
+        f.u * w - (sprite.width * unit) / 2 + glideX * 0.65,
         f.v * h - (sprite.height * unit) / 2,
         unit,
         f.vx < 0,
@@ -475,14 +478,14 @@ export class SeasideCreatures {
   }
 
   /** Draws surfacing dolphins and splash pixels on water in Sunset Cove. */
-  drawDolphins(ctx: CanvasRenderingContext2D, w: number, h: number, unit: number, sprites: SeasideSprites, day: number, panX: number): void {
+  drawDolphins(ctx: CanvasRenderingContext2D, w: number, h: number, unit: number, sprites: SeasideSprites, day: number, glideX: number): void {
     for (const d of this.dolphins) {
       if (!d.active || d.wait > 0) continue;
       const t = d.progress;
       const arc = Math.sin(Math.PI * t);
       if (arc < 0.08) continue;
       const sprite = t < 0.5 ? sprites.dolphinUp : sprites.dolphinDive;
-      const x = (d.startU + d.spanU * t) * w + panX * 0.45;
+      const x = (d.startU + d.spanU * t) * w + glideX * BOAT_GLIDE;
       const baseY = 0.625 * h;
       const y = baseY - arc * (baseY - d.peakV * h);
       drawSprite(ctx, sprite, x - (sprite.width * unit) / 2, y - sprite.height * unit, unit, false);
@@ -504,8 +507,7 @@ export class SeasideCreatures {
     h: number,
     unit: number,
     sprites: SeasideSprites,
-    panX: number,
-    panY: number,
+    glideX: number,
   ): void {
     // Harbour Cat
     if (sceneIndex === SCENE_HARBOUR) {
@@ -517,8 +519,8 @@ export class SeasideCreatures {
             : Math.floor(this.cat.clock * 1.6) % 2 === 0
               ? sprites.catSit
               : sprites.catTailWave;
-      const cx = 0.185 * w + panX * 0.72;
-      const cy = 0.70 * h + panY * 0.5;
+      const cx = 0.185 * w + glideX * SHORE_GLIDE;
+      const cy = 0.70 * h;
       drawSprite(L, sp, cx - (sp.width * unit) / 2, cy - sp.height * unit, unit, this.cat.lookDir < 0);
     }
 
@@ -530,15 +532,15 @@ export class SeasideCreatures {
           : this.heron.mood === 'peer'
             ? sprites.heronPeer
             : sprites.heronStand;
-      const hx = 0.27 * w + panX * 0.72;
-      const hy = 0.785 * h + panY * 0.5;
+      const hx = 0.27 * w + glideX * SHORE_GLIDE;
+      const hy = 0.785 * h;
       L.fillStyle = 'rgba(200,225,240,0.35)';
       L.fillRect(Math.round(hx - 4 * unit), Math.round(hy - 1), Math.round(8 * unit), 1);
       drawSprite(L, sp, hx - (sp.width * unit) / 2, hy - sp.height * unit, unit, this.heron.lookDir < 0);
 
       for (const sc of this.shoreCrabs) {
         const csp = sc.mood === 'idle' || Math.floor(sc.clock * 6) % 2 === 0 ? sprites.shoreCrabA : sprites.shoreCrabB;
-        drawSprite(L, csp, sc.u * w - (csp.width * unit) / 2 + panX * 0.72, sc.v * h - csp.height * unit + panY * 0.5, unit, false);
+        drawSprite(L, csp, sc.u * w - (csp.width * unit) / 2 + glideX * SHORE_GLIDE, sc.v * h - csp.height * unit, unit, false);
       }
     }
 
@@ -555,10 +557,10 @@ export class SeasideCreatures {
               ? sprites.crabWalkA
               : sprites.crabWalkB
             : sprites.crabIdle;
-      const x = crab.u * w + panX * 0.72;
-      const y = crab.v * h + panY * 0.5 - crab.hopOffset;
+      const x = crab.u * w + glideX * SHORE_GLIDE;
+      const y = crab.v * h - crab.hopOffset;
       L.fillStyle = 'rgba(0,0,0,0.22)';
-      L.fillRect(Math.round(x - 5 * unit), Math.round(crab.v * h + panY * 0.5 - 1), Math.round(10 * unit), 1);
+      L.fillRect(Math.round(x - 5 * unit), Math.round(crab.v * h - 1), Math.round(10 * unit), 1);
       drawSprite(L, sp, x - (sp.width * unit) / 2, y - sp.height * unit, unit, crab.dir < 0);
     }
 
@@ -568,13 +570,13 @@ export class SeasideCreatures {
       for (const g of gulls) {
         if (g.state === 'fly') {
           const sp = Math.floor(g.clock * 8) % 2 === 0 ? sprites.gullFlyA : sprites.gullFlyB;
-          drawSprite(L, sp, g.u * w - (sp.width * unit) / 2 + panX * 0.72, g.flyY * h - sp.height * unit, unit, g.dir < 0);
+          drawSprite(L, sp, g.u * w - (sp.width * unit) / 2 + glideX * SHORE_GLIDE, g.flyY * h - sp.height * unit, unit, g.dir < 0);
           continue;
         }
         const hopLift = g.state === 'hop' ? Math.sin((g.clock / 0.55) * Math.PI) * 7 * unit : 0;
         const sp = g.state === 'hop' ? sprites.gullHop : g.state === 'peck' && Math.floor(g.clock * 4) % 2 === 0 ? sprites.gullPeck : sprites.gullStand;
-        const gx = g.u * w + panX * 0.72;
-        const gy = g.v * h + panY * 0.5 - hopLift;
+        const gx = g.u * w + glideX * SHORE_GLIDE;
+        const gy = g.v * h - hopLift;
         drawSprite(L, sp, gx - (sp.width * unit) / 2, gy - sp.height * unit, unit, g.dir < 0);
       }
     }
