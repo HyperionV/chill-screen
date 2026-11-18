@@ -6,6 +6,11 @@ import { ramp } from '../../journeys/noise';
 /** Design stage height in pixels; horizontal dimensions scale proportionally by `h / DESIGN_ROWS`. */
 export const DESIGN_ROWS = 270;
 
+const STANDARD_DECK_TOP = 204;
+const OVERLOOK_DROP = 14;
+const REAR_WALL_DEPTH = 10;
+const OVERLOOK_CURB_REDUCTION = 2;
+
 /** Horizon line as a share of the stage height (sky above, city & rooftop below). */
 export const HORIZON = 0.56;
 
@@ -28,8 +33,8 @@ export const MID_SPAN = WORLD_W * MID_PARALLAX;
 export const NEAR_ROOF_PARALLAX = 0.75;
 export const NEAR_ROOF_SPAN = WORLD_W * NEAR_ROOF_PARALLAX;
 
-export const FRONT_PARALLAX = 1.25;
-export const FRONT_SPAN = WORLD_W * FRONT_PARALLAX;
+export const SILHOUETTE_PARALLAX = 0.88;
+export const SILHOUETTE_SPAN = WORLD_W * SILHOUETTE_PARALLAX;
 
 /** The five scenes of Rooftop City (17.5 minute full loop). */
 export const CHAPTERS: readonly Chapter[] = [
@@ -116,7 +121,14 @@ export function deckTopAt(wx: number): number {
   const dist = Math.abs(x - overlookCenter);
   // Dip the foreground parapet in Scene 2 (Skyline Golden Hour) to open the panoramic view.
   const dip = 1 - ramp(145, 205, dist);
-  return Math.round(204 + dip * 14);
+  return Math.round(STANDARD_DECK_TOP + dip * OVERLOOK_DROP);
+}
+
+/** Coping rises above the back of the deck, with a lower curb at the overlook. */
+export function rearCapAt(wx: number): number {
+  const back = deckTopAt(wx);
+  const drop = (back - STANDARD_DECK_TOP) / OVERLOOK_DROP;
+  return back - REAR_WALL_DEPTH + Math.round(drop * OVERLOOK_CURB_REDUCTION);
 }
 
 /** Builds deterministic skyline layers so buildings and clickable windows stay identical across resizes. */

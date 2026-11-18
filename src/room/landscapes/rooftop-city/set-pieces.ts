@@ -1,11 +1,17 @@
 import type { SkyState } from '../../sky';
 import { clamp01 } from '../../sky';
+import { breeze } from '../../wind';
 import type { SpriteBox } from './cast-sprites';
 import type { RooftopInteractions } from './interactions';
+import { drawDitheredSpill, drawHalo, type HaloSprites } from './light-halos';
 import { SCENE_SPACING, WORLD_W, deckTopAt, wrapDelta } from './scenes';
 import type { RooftopSprites } from './sprites';
+import { GREENHOUSE_LAMP_HEIGHT, GREENHOUSE_LAMP_OFFSETS } from './structure-sprites';
+import { drawWindBent, drawWire, windSag, wireHeight } from './wind-motion';
 
-const SWAY_STRIP_PX = 3;
+const PLANT_TIP_BEND = 2.5;
+const CLOTH_TIP_BEND = 2.8;
+const POT_ROWS = 4;
 
 interface StringLightSpan {
   wx1: number;
@@ -30,7 +36,6 @@ export function drawSetPiecesPreTint(
   L: CanvasRenderingContext2D,
   time: number,
   camX: number,
-  pxShift: number,
   designW: number,
   unit: number,
   pointerDesign: { x: number; y: number } | null,
@@ -38,7 +43,7 @@ export function drawSetPiecesPreTint(
   interactions: RooftopInteractions,
 ): void {
   const halfW = designW * 0.5;
-  const foreCam = camX + pxShift;
+  const foreCam = camX;
   const toScreenX = (wx: number): number => wrapDelta(wx, foreCam, WORLD_W) + halfW;
   const onScreen = (sx: number, margin = 150): boolean => sx > -margin && sx < designW + margin;
 
@@ -74,14 +79,8 @@ export function drawSetPiecesPreTint(
     L.fillRect(Math.round(pole1X * unit), Math.round(154 * unit), Math.max(2, Math.round(2 * unit)), Math.round(50 * unit));
     L.fillRect(Math.round(pole2X * unit), Math.round(152 * unit), Math.max(2, Math.round(2 * unit)), Math.round(52 * unit));
 
-    L.fillStyle = '#c8d0dc';
-    const lineSteps = 22;
-    for (let i = 0; i < lineSteps; i++) {
-      const u = i / lineSteps;
-      const lx = pole1X + (pole2X - pole1X) * u;
-      const ly = 154 + Math.sin(u * Math.PI) * 7;
-      L.fillRect(Math.round(lx * unit), Math.round(ly * unit), Math.max(2, Math.round(6 * unit)), Math.max(1, Math.round(unit)));
-    }
+    const sag = windSag(time, 76, 7);
+    drawWire(L, pole1X, 154, pole2X, 152, sag, unit, '#acafbb');
 
     const garmentDxs = [92, 114, 138, 162, 188];
     garmentDxs.forEach((gdx, i) => {
@@ -89,8 +88,8 @@ export function drawSetPiecesPreTint(
       if (!gSp) return;
       const gx = s0 + gdx;
       const u = (gx - pole1X) / (pole2X - pole1X);
-      const topY = 155 + Math.sin(u * Math.PI) * 7;
-      drawHangingLaundry(L, gSp, gx, topY, time + i * 0.7, unit, pointerDesign, interactions);
+      const topY = wireHeight(154, 152, sag, u) + 1;
+      drawHangingLaundry(L, gSp, gx, topY, time, unit, pointerDesign, interactions);
     });
   }
 
@@ -120,16 +119,11 @@ export function drawSetPiecesPreTint(
     if (barPlantA) drawSwayingSprite(L, barPlantA, s2 - 90, 206, time, unit, pointerDesign, interactions, 0.75);
     if (barPlantB) drawSwayingSprite(L, barPlantB, s2 + 210, 206, time, unit, pointerDesign, interactions, 0.75);
 
-    L.fillStyle = '#242830';
     for (const span of BAR_STRING_LIGHTS) {
       const x1 = toScreenX(span.wx1);
-      const x2 = toScreenX(span.wx2);
-      for (let i = 0; i <= 24; i++) {
-        const u = i / 24;
-        const bx = x1 + (x2 - x1) * u;
-        const by = span.y1 + (span.y2 - span.y1) * u + Math.sin(u * Math.PI) * span.sag;
-        L.fillRect(Math.round(bx * unit), Math.round(by * unit), Math.max(2, Math.round(5 * unit)), Math.max(1, Math.round(unit)));
-      }
+      const x2 = x1 + span.wx2 - span.wx1;
+      if (x1 > designW + 8 || x2 < -8) continue;
+      drawWire(L, x1, span.y1, x2, span.y2, windSag(time, span.wx1, span.sag), unit, '#242830');
     }
   }
 
@@ -177,14 +171,14 @@ export function drawSetPiecesPostTint(
   state: SkyState,
   time: number,
   camX: number,
-  pxShift: number,
   designW: number,
   unit: number,
   sprites: RooftopSprites,
+  halos: HaloSprites,
   interactions: RooftopInteractions,
 ): void {
   const halfW = designW * 0.5;
-  const foreCam = camX + pxShift;
+  const foreCam = camX;
   const toScreenX = (wx: number): number => wrapDelta(wx, foreCam, WORLD_W) + halfW;
   const night = 1 - state.day;
 
@@ -198,21 +192,29 @@ export function drawSetPiecesPostTint(
     drawStand(ctx, sprites.barTableGlow, s2 + 194, 212, unit);
     ctx.restore();
 
-    const u = Math.max(1, Math.round(unit));
+    drawHalo(ctx, halos.neonCyan, s2 - 172, 140, unit, glowStrength * 0.65);
+    drawHalo(ctx, halos.neonPink, s2 - 146, 140, unit, glowStrength * 0.6);
+    drawHalo(ctx, halos.lanternWarm, s2 + 132, 195, unit, glowStrength * 0.72);
+    drawHalo(ctx, halos.lanternWarm, s2 + 194, 197, unit, glowStrength * 0.72);
+    if (night > 0.15) {
+      drawDitheredSpill(ctx, halos.neonCyanSpill, s2 - 183, 185, night * 0.24, unit);
+      drawDitheredSpill(ctx, halos.neonPinkSpill, s2 - 148, 185, night * 0.22, unit);
+      drawDitheredSpill(ctx, halos.stringSpill, s2 + 156, 216, night * 0.21, unit);
+    }
+
     for (const span of BAR_STRING_LIGHTS) {
       const x1 = toScreenX(span.wx1);
-      const x2 = toScreenX(span.wx2);
+      const x2 = x1 + span.wx2 - span.wx1;
+      if (x1 > designW + 8 || x2 < -8) continue;
+      const sag = windSag(time, span.wx1, span.sag);
       for (let i = 1; i < span.bulbs; i++) {
         const frac = i / span.bulbs;
-        const sway = Math.sin(time * 1.4 + i) * 0.4;
-        const bx = Math.round((x1 + (x2 - x1) * frac + sway) * unit);
-        const by = Math.round((span.y1 + (span.y2 - span.y1) * frac + Math.sin(frac * Math.PI) * span.sag + 1) * unit);
-        const pulse = 0.85 + 0.15 * Math.sin(time * 1.8 + i * 1.3);
+        const bx = x1 + (x2 - x1) * frac;
+        if (bx < -8 || bx > designW + 8) continue;
+        const by = wireHeight(span.y1, span.y2, sag, frac) + 1;
+        const pulse = 0.86 + 0.14 * Math.sin(time * 1.8 + i * 1.3);
         const a = clamp01((0.4 + 0.6 * night) * pulse);
-        ctx.fillStyle = `rgba(255, 202, 112, ${(0.22 * a).toFixed(2)})`;
-        ctx.fillRect(bx - u, by - u, u * 3, u * 3);
-        ctx.fillStyle = `rgba(255, 238, 174, ${a.toFixed(2)})`;
-        ctx.fillRect(bx, by, u, u);
+        drawHalo(ctx, halos.bulbAmber, bx, by, unit, a);
       }
     }
   }
@@ -226,10 +228,8 @@ export function drawSetPiecesPostTint(
     drawBillboardAdvert(ctx, bbLeft + 6, bbTop + 6, unit, sprites, interactions);
     ctx.restore();
 
-    const u = Math.max(1, Math.round(unit));
-    ctx.fillStyle = `rgba(255, 240, 190, ${(0.75 * night).toFixed(2)})`;
     for (const lx of [24, 60, 96]) {
-      ctx.fillRect(Math.round((bbLeft + lx) * unit), Math.round((bbTop + 3) * unit), u * 2, u);
+      drawHalo(ctx, halos.floodWarm, bbLeft + lx + 1, bbTop + 4, unit, night * 0.72);
     }
   }
 
@@ -240,13 +240,17 @@ export function drawSetPiecesPostTint(
       ctx.globalAlpha = clamp01(night * 0.9);
       drawStand(ctx, sprites.greenhouseGlow, s4 + 158, 204, unit);
       ctx.restore();
+      for (const offset of GREENHOUSE_LAMP_OFFSETS) {
+        drawHalo(ctx, halos.lanternWarm, s4 + 158 + offset, 204 - GREENHOUSE_LAMP_HEIGHT, unit, night * 0.5);
+      }
+      drawDitheredSpill(ctx, halos.greenhouseSpill, s4 + 158, 210, night * 0.27, unit);
     }
 
     const spX = s4 - 144;
     const spY = 200;
     const u = Math.max(1, Math.round(unit));
     ctx.fillStyle = `rgba(196, 236, 255, ${(0.55 + 0.25 * state.day).toFixed(2)})`;
-    const sweep = Math.sin(time * 1.1) * 0.35;
+    const sweep = breeze(time, SCENE_SPACING * 4 - 144) * 0.2;
     for (let i = 0; i < 16; i++) {
       const phase = (time * 1.6 + i * 0.19) % 1;
       const side = i % 2 === 0 ? -1 : 1;
@@ -295,34 +299,9 @@ function drawSwayingSprite(
   interactions: RooftopInteractions,
   swayScale: number,
 ): void {
-  const breeze = interactions.breezeAt(cx, feetY - sp.h * 0.5, pointerDesign);
-  const natural = Math.sin(time * 1.6 + cx * 0.05) * 1.1 * swayScale;
-  const bend = (natural + breeze) * unit;
-  const baseX = Math.round((cx - sp.w * 0.5) * unit);
-  const topY = Math.round((feetY - sp.h) * unit);
-  const drawW = Math.round(sp.w * unit);
-
-  if (Math.abs(bend) < 0.5) {
-    ctx.drawImage(sp.canvas, baseX, topY, drawW, Math.round(sp.h * unit));
-    return;
-  }
-
-  for (let sy = 0; sy < sp.h; sy += SWAY_STRIP_PX) {
-    const rows = Math.min(SWAY_STRIP_PX, sp.h - sy);
-    const k = 1 - (sy + rows * 0.5) / sp.h;
-    const shift = Math.round(bend * k * k);
-    ctx.drawImage(
-      sp.canvas,
-      0,
-      sy,
-      sp.w,
-      rows,
-      baseX + shift,
-      topY + Math.round(sy * unit),
-      drawW,
-      Math.max(1, Math.round(rows * unit)),
-    );
-  }
+  const top = feetY - sp.h;
+  const push = interactions.breezeAt(cx, top + sp.h / 2, pointerDesign);
+  drawWindBent(ctx, sp, cx, top, unit, breeze(time, cx) * PLANT_TIP_BEND * swayScale + push, false, POT_ROWS);
 }
 
 function drawHangingLaundry(
@@ -335,29 +314,8 @@ function drawHangingLaundry(
   pointerDesign: { x: number; y: number } | null,
   interactions: RooftopInteractions,
 ): void {
-  const breeze = interactions.breezeAt(cx, topY + sp.h * 0.5, pointerDesign);
-  const natural = Math.sin(time * 1.8) * 1.4 + Math.sin(time * 0.7) * 0.6;
-  const bend = (natural + breeze) * unit;
-  const baseX = Math.round((cx - sp.w * 0.5) * unit);
-  const y0 = Math.round(topY * unit);
-  const drawW = Math.round(sp.w * unit);
-
-  for (let sy = 0; sy < sp.h; sy += SWAY_STRIP_PX) {
-    const rows = Math.min(SWAY_STRIP_PX, sp.h - sy);
-    const k = (sy + rows * 0.5) / sp.h;
-    const shift = Math.round(bend * k * k);
-    ctx.drawImage(
-      sp.canvas,
-      0,
-      sy,
-      sp.w,
-      rows,
-      baseX + shift,
-      y0 + Math.round(sy * unit),
-      drawW,
-      Math.max(1, Math.round(rows * unit)),
-    );
-  }
+  const push = interactions.breezeAt(cx, topY + sp.h / 2, pointerDesign);
+  drawWindBent(ctx, sp, cx, topY, unit, breeze(time, cx) * CLOTH_TIP_BEND + push, true);
 }
 
 function drawStand(ctx: CanvasRenderingContext2D, sp: SpriteBox, cx: number, feetY: number, unit: number): void {

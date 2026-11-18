@@ -1,5 +1,6 @@
 import { clamp } from '../../../world/math';
 import type { RooftopCreatures } from './creatures';
+import type { ForegroundLayer } from './foreground';
 import type { ScreenRect, Skyline } from './skyline';
 
 const BILLBOARD_CYCLE_SECONDS = 45;
@@ -64,11 +65,11 @@ export class RooftopInteractions {
     dx: number,
     dy: number,
     camX: number,
-    pxShift: number,
     designW: number,
     night: number,
     skyline: Skyline,
     creatures: RooftopCreatures,
+    foreground: ForegroundLayer,
   ): void {
     if (creatures.tryStretchCat(dx, dy)) return;
     if (creatures.tryScatterPigeons(dx, dy)) return;
@@ -87,7 +88,10 @@ export class RooftopInteractions {
       return;
     }
 
-    skyline.toggleWindowAt(dx, dy, camX, pxShift, designW, night);
+    if (foreground.tryClickPuddle(dx, dy)) return;
+    if (!foreground.coversSkyline(dx, dy, camX, designW)) {
+      skyline.toggleWindowAt(dx, dy, camX, designW, night);
+    }
   }
 
   private trySwitchBillboard(dx: number, dy: number): boolean {

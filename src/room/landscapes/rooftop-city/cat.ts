@@ -1,6 +1,6 @@
 import { lerp, rand } from '../../../world/math';
 import type { CastSprites, SpriteBox } from './cast-sprites';
-import { SCENE_SPACING, WORLD_W, deckTopAt, wrapCoord, wrapDelta } from './scenes';
+import { SCENE_SPACING, WORLD_W, rearCapAt, wrapCoord, wrapDelta } from './scenes';
 import type { ScreenRect } from './skyline';
 
 type CatSceneMood = 'vent' | 'overlook' | 'rail' | 'watch' | 'sleep';
@@ -43,7 +43,7 @@ export class CatController {
       let span = to.wx - from.wx;
       if (span < 0) span += WORLD_W;
       this.wx = wrapCoord(from.wx + span * blend, WORLD_W);
-      const ledgeY = deckTopAt(this.wx) - 2;
+      const ledgeY = rearCapAt(this.wx) + 1;
       const arc =
         Math.sin(Math.PI * Math.min(1, blend / 0.14)) * 4 +
         Math.sin(Math.PI * Math.max(0, (blend - 0.86) / 0.14)) * 4;

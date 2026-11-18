@@ -2,7 +2,6 @@ import { css, mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hourNow } from '../../../scene/clock';
 import type { Look } from '../../../wallpapers/look';
-import { approach, clamp } from '../../../world/math';
 import type { NightSky } from '../../night-sky';
 import { SkyDome, clamp01, type SkyState } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
@@ -10,27 +9,24 @@ import { ChapterTitle } from '../../journeys/chapter-title';
 import { Route } from '../../journeys/route';
 import { createCastSprites, type CastSprites } from './cast-sprites';
 import { RooftopCreatures } from './creatures';
+import { ForegroundLayer } from './foreground';
+import { createForegroundSprites, type ForegroundSprites } from './foreground-sprites';
 import { RooftopInteractions } from './interactions';
+import { createHaloSprites, type HaloSprites } from './light-halos';
 import {
   CHAPTERS,
   DESIGN_ROWS,
-  FRONT_PARALLAX,
-  FRONT_SPAN,
   HORIZON,
-  SCENE_SPACING,
-  WORLD_W,
   cameraAt,
   createCityLayout,
-  deckTopAt,
-  wrapDelta,
 } from './scenes';
 import { drawSetPiecesPostTint, drawSetPiecesPreTint } from './set-pieces';
 import { Skyline } from './skyline';
 import { createRooftopSprites, type RooftopSprites } from './sprites';
 
 const luma = (c: RGB): number => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
-
-const PARALLAX_MAX_SHIFT = 7;
+const MOONLIT_WASH: RGB = [40, 51, 86];
+const NIGHT_WASH = 0.42;
 
 /**
  * Rooftop City: a calm, lived-in rooftop above a layered skyline spanning five connected
@@ -42,7 +38,6 @@ export class RooftopCityView implements OutsideView {
   private h = 0;
   private unit = 1;
   private designW = 480;
-  private pxShift = 0;
 
   private readonly route = new Route('landscape-rooftop-city', CHAPTERS);
   private readonly title = new ChapterTitle();
@@ -52,14 +47,18 @@ export class RooftopCityView implements OutsideView {
 
   private readonly layout = createCityLayout();
   private readonly skyline = new Skyline(this.layout);
+  private readonly foreground = new ForegroundLayer();
   private readonly creatures = new RooftopCreatures();
   private readonly interactions = new RooftopInteractions();
 
   private sprites: RooftopSprites | null = null;
   private castSprites: CastSprites | null = null;
+  private fgSprites: ForegroundSprites | null = null;
+  private halos: HaloSprites | null = null;
 
   private lastCamX = 0;
   private lastNight = 0;
+  private hasDrawn = false;
 
   constructor(nightSky: NightSky) {
     this.dome = new SkyDome(nightSky, HORIZON);
@@ -69,9 +68,10 @@ export class RooftopCityView implements OutsideView {
   resize(w: number, h: number): void {
     this.w = Math.max(0, Math.round(w));
     this.h = Math.max(0, Math.round(h));
+    this.hasDrawn = false;
     if (this.w <= 0 || this.h <= 0) return;
 
-    this.unit = Math.max(0.5, this.h / DESIGN_ROWS);
+    this.unit = this.h / DESIGN_ROWS;
     this.designW = this.w / this.unit;
     this.dome.resize(this.w, this.h);
     this.land.canvas.width = this.w;
@@ -80,24 +80,28 @@ export class RooftopCityView implements OutsideView {
 
     if (!this.sprites) this.sprites = createRooftopSprites();
     if (!this.castSprites) this.castSprites = createCastSprites();
+    if (!this.fgSprites) this.fgSprites = createForegroundSprites();
+    if (!this.halos) this.halos = createHaloSprites();
   }
 
   press(x: number, y: number): void {
-    if (this.w <= 0 || this.h <= 0) return;
+    if (!this.hasDrawn) return;
     this.interactions.press(
       x / this.unit,
       y / this.unit,
       this.lastCamX,
-      this.pxShift,
       this.designW,
       this.lastNight,
       this.skyline,
       this.creatures,
+      this.foreground,
     );
   }
 
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look {
-    if (this.w <= 0 || this.h <= 0 || !this.sprites || !this.castSprites) return this.look;
+    if (this.w <= 0 || this.h <= 0 || !this.sprites || !this.castSprites || !this.fgSprites || !this.halos) {
+      return this.look;
+    }
 
     const dt = Math.min(0.1, Math.max(0, frame.dt));
     ctx.imageSmoothingEnabled = false;
@@ -107,11 +111,6 @@ export class RooftopCityView implements OutsideView {
     const { camX, blend } = cameraAt(now.index, now.t, now.next);
     this.lastCamX = camX;
 
-    const targetShift = frame.pointer
-      ? clamp((frame.pointer.x / this.w - 0.5) * 2 * PARALLAX_MAX_SHIFT, -PARALLAX_MAX_SHIFT, PARALLAX_MAX_SHIFT)
-      : 0;
-    this.pxShift = approach(this.pxShift, targetShift, 4.5, dt);
-
     const pointerDesign = frame.pointer ? { x: frame.pointer.x / this.unit, y: frame.pointer.y / this.unit } : null;
 
     const hour = hourNow();
@@ -120,6 +119,7 @@ export class RooftopCityView implements OutsideView {
     this.updateLook(state);
 
     this.skyline.step(dt);
+    this.foreground.update(dt, frame.time);
     this.interactions.update(dt, pointerDesign);
     this.creatures.update(
       dt,
@@ -128,7 +128,6 @@ export class RooftopCityView implements OutsideView {
       now.next,
       blend,
       camX,
-      this.pxShift,
       this.designW,
       state.day,
       pointerDesign,
@@ -137,111 +136,80 @@ export class RooftopCityView implements OutsideView {
     // 1. Sky dome (gradient, stars, meteors, sun/moon, clouds)
     this.dome.draw(ctx, state, frame, this.look);
 
-    // 2. Offscreen city + rooftop layer
+    // Composite city lights before the rooftop so hidden windows cannot shine through the bricks.
     const L = this.land.ctx;
     L.imageSmoothingEnabled = false;
     L.clearRect(0, 0, this.w, this.h);
 
-    this.skyline.drawPreTint(L, state, hour, camX, this.pxShift, this.designW, DESIGN_ROWS, this.unit, this.sprites);
-    this.drawRooftopDeck(L, camX, this.pxShift);
+    this.skyline.drawPreTint(L, state, hour, camX, this.designW, DESIGN_ROWS, this.unit, this.sprites);
+    this.tintLand(L, state);
+    ctx.drawImage(this.land.canvas, 0, 0);
+    this.skyline.drawPostTint(ctx, state, frame.time, camX, this.designW, this.unit, this.sprites, this.halos);
+
+    L.clearRect(0, 0, this.w, this.h);
+    this.foreground.drawSilhouetteLayer(L, camX, this.designW, this.unit);
+    this.foreground.drawTerraceAndParapet(L, state, frame.time, camX, this.designW, this.unit, this.fgSprites);
     drawSetPiecesPreTint(
       L,
       frame.time,
       camX,
-      this.pxShift,
       this.designW,
       this.unit,
       pointerDesign,
       this.sprites,
       this.interactions,
     );
-    this.creatures.drawPreTint(L, frame.time, camX, this.pxShift, this.designW, state.day, this.unit, this.castSprites);
+    this.creatures.drawPreTint(L, frame.time, camX, this.designW, state.day, this.unit, this.castSprites);
+    this.foreground.drawPropsPreTint(
+      L,
+      frame.time,
+      camX,
+      this.designW,
+      this.unit,
+      pointerDesign,
+      this.fgSprites,
+      this.interactions,
+    );
 
     this.tintLand(L, state);
     ctx.drawImage(this.land.canvas, 0, 0);
 
-    // 3. Post-tint lights, glowing signs, greenhouse glow, sprinkler water, balloons, notes, silhouettes
-    this.skyline.drawPostTint(ctx, state, frame.time, camX, this.pxShift, this.designW, this.unit, this.sprites);
-    drawSetPiecesPostTint(ctx, state, frame.time, camX, this.pxShift, this.designW, this.unit, this.sprites, this.interactions);
-    this.creatures.drawPostTint(ctx, frame.time, camX, this.pxShift, this.designW, this.unit, this.castSprites);
-    this.drawForegroundSilhouettes(ctx, state, camX, this.pxShift);
+    drawSetPiecesPostTint(
+      ctx,
+      state,
+      frame.time,
+      camX,
+      this.designW,
+      this.unit,
+      this.sprites,
+      this.halos,
+      this.interactions,
+    );
+    this.foreground.drawPropsPostTint(
+      ctx,
+      state,
+      frame.time,
+      camX,
+      this.designW,
+      this.unit,
+      this.fgSprites,
+      this.halos,
+    );
+    this.creatures.drawPostTint(ctx, frame.time, camX, this.designW, this.unit, this.castSprites);
 
     this.title.draw(ctx, dt, this.w, this.h, now.name);
+    this.hasDrawn = true;
     return this.look;
   }
 
   private updateLook(state: SkyState): void {
     const { sky, sun, day } = state;
     const air = mix(sky.zenith, sky.horizon, 0.55);
-    const rooftopStone = mix([42, 48, 72], [116, 108, 102], day);
+    const rooftopStone = mix([49, 55, 78], [108, 103, 111], day);
     this.look.mean = luma(air) * 0.6 + luma(rooftopStone) * 0.4;
     this.look.night = 1 - day;
     this.look.tint = mix(air, rooftopStone, 0.3);
     this.look.sun = sun.up > -0.02 ? { u: sun.u, v: sun.v, strength: 0.72, color: sky.light } : null;
-  }
-
-  private drawRooftopDeck(L: CanvasRenderingContext2D, camX: number, pxShift: number): void {
-    const foreCam = camX + pxShift;
-    const halfW = this.designW * 0.5;
-    const step = 4;
-
-    for (let sx = 0; sx < this.designW; sx += step) {
-      const wx = foreCam + sx - halfW;
-      const top = deckTopAt(wx);
-      const dx = Math.round(sx * this.unit);
-      const dw = Math.max(1, Math.round((sx + step) * this.unit) - dx);
-      const dy = Math.round(top * this.unit);
-      const dh = this.h - dy;
-
-      L.fillStyle = '#7c4b3e';
-      L.fillRect(dx, dy, dw, dh);
-      L.fillStyle = '#5e362c';
-      for (let ry = top + 5; ry < DESIGN_ROWS; ry += 5) {
-        L.fillRect(dx, Math.round(ry * this.unit), dw, Math.max(1, Math.round(0.9 * this.unit)));
-      }
-
-      L.fillStyle = '#9aa3b0';
-      L.fillRect(dx, dy - Math.round(2 * this.unit), dw, Math.max(2, Math.round(3 * this.unit)));
-      L.fillStyle = '#c0c8d4';
-      L.fillRect(dx, dy - Math.round(2 * this.unit), dw, Math.max(1, Math.round(this.unit)));
-    }
-
-    const overlookSx = wrapDelta(SCENE_SPACING, foreCam, WORLD_W) + halfW;
-    if (overlookSx > -200 && overlookSx < this.designW + 200) {
-      const railLeft = Math.round((overlookSx - 148) * this.unit);
-      const railW = Math.round(296 * this.unit);
-      const railTop = Math.round(205 * this.unit);
-      const railThick = Math.max(1, Math.round(this.unit));
-      L.fillStyle = '#383e4a';
-      L.fillRect(railLeft, railTop, railW, railThick);
-      L.fillRect(railLeft, railTop + Math.round(5 * this.unit), railW, railThick);
-      for (let rx = overlookSx - 144; rx <= overlookSx + 144; rx += 18) {
-        L.fillRect(Math.round(rx * this.unit), railTop, railThick, Math.round(12 * this.unit));
-      }
-    }
-  }
-
-  private drawForegroundSilhouettes(ctx: CanvasRenderingContext2D, state: SkyState, camX: number, pxShift: number): void {
-    const frontCam = camX * FRONT_PARALLAX + pxShift * FRONT_PARALLAX;
-    const halfW = this.designW * 0.5;
-    const col = mix([22, 26, 36], [10, 12, 22], 1 - state.day);
-    ctx.fillStyle = css(col, 0.72);
-
-    for (let k = 0; k < 5; k++) {
-      const wx = k * 700 + 350;
-      const sx = wrapDelta(wx, frontCam, FRONT_SPAN) + halfW;
-      if (sx < -20 || sx > this.designW + 20) continue;
-      if (sx > this.designW * 0.32 && sx < this.designW * 0.68) continue;
-      const x = Math.round(sx * this.unit);
-      const h = Math.round(28 * this.unit);
-      ctx.fillRect(x, this.h - h, Math.max(2, Math.round(3 * this.unit)), h);
-      ctx.fillRect(
-        x - Math.round(5 * this.unit),
-        this.h - h + Math.round(4 * this.unit),
-        Math.round(13 * this.unit),
-        Math.max(1, Math.round(2 * this.unit)),
-      );
-    }
   }
 
   private tintLand(L: CanvasRenderingContext2D, state: SkyState): void {
@@ -250,9 +218,7 @@ export class RooftopCityView implements OutsideView {
     L.save();
     L.globalCompositeOperation = 'source-atop';
     if (night > 0.02) {
-      L.fillStyle = css([8, 14, 44], 0.56 * night);
-      L.fillRect(0, 0, this.w, this.h);
-      L.fillStyle = css([38, 66, 146], 0.16 * night);
+      L.fillStyle = css(MOONLIT_WASH, NIGHT_WASH * night);
       L.fillRect(0, 0, this.w, this.h);
     }
     const low = clamp01(1 - sun.up / 0.55) * day;
