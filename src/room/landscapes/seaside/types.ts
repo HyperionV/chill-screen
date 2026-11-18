@@ -16,10 +16,10 @@ export const SURF_PERIOD = 9.5;
 export const TRANSITION_SECONDS = 10;
 /** Pointer proximity radius in design pixels for startling crabs and gulls. */
 export const STARTLE_RADIUS = 28;
-/** Maximum parallax shift in design pixels for the nearest foreground layer. */
-export const PARALLAX_MAX = 6;
-/** Layer parallax multipliers: sky/far, headland/mid-far, mid water/boats, near shore, foreground. */
-export const LAYER_PARALLAX = [0.12, 0.25, 0.45, 0.72, 1.0] as const;
+/** Depth of the horizontal chapter glide, from the distant scenery to the shore. */
+export const FAR_GLIDE = 0.25;
+export const BOAT_GLIDE = 0.45;
+export const SHORE_GLIDE = 0.72;
 
 export const WHITE: RGB = [255, 255, 255];
 export const SAND_COLOR: RGB = [222, 196, 152];
@@ -183,12 +183,11 @@ export interface SceneRenderContext {
   h: number;
   unit: number;
   time: number;
-  dt: number;
   state: SkyState;
-  px: number;
-  py: number;
-  cameraShiftX: number;
-  pointer: Point | null;
+  windStrength: number;
+  seedTravel: number;
+  /** Horizontal offset from the chapter transition. */
+  glideX: number;
   interactions: InteractionState;
 }
 

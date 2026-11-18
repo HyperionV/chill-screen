@@ -4,8 +4,7 @@ export interface PropSprites {
   umbrella: HTMLCanvasElement;
   towel: HTMLCanvasElement;
   sandcastle: HTMLCanvasElement;
-  flagA: HTMLCanvasElement;
-  flagB: HTMLCanvasElement;
+  pennant: HTMLCanvasElement;
   driftwood: HTMLCanvasElement;
   shells: HTMLCanvasElement[];
   bottleClosed: HTMLCanvasElement;
@@ -23,8 +22,8 @@ export interface PropSprites {
   anemonePinkB: HTMLCanvasElement;
   anemoneTealA: HTMLCanvasElement;
   anemoneTealB: HTMLCanvasElement;
-  seaweedA: HTMLCanvasElement;
-  seaweedB: HTMLCanvasElement;
+  seaweed: HTMLCanvasElement;
+  sailCloth: HTMLCanvasElement;
   sailboat: HTMLCanvasElement;
   sailboatLight: HTMLCanvasElement;
 }
@@ -156,8 +155,7 @@ export function buildPropSprites(): PropSprites {
     BEACH_PAL,
   );
 
-  const flagA = pixmap(['.PAAAA..', '.PRRRR..', '.PRR....', '.P......', '.P......'], BEACH_PAL);
-  const flagB = pixmap(['.P..AA..', '.PRRRR..', '.PR.....', '.P......', '.P......'], BEACH_PAL);
+  const pennant = pixmap(['.PAAAA..', '.PRRRR..', '.PRR....', '.P......', '.P......'], BEACH_PAL);
 
   const driftwood = pixmap(
     [
@@ -303,43 +301,40 @@ export function buildPropSprites(): PropSprites {
   const anemonePinkB = pixmap(['p..p..p', '.PpPpP.', '.PPPPP.', '..PPP..'], POOL_PAL);
   const anemoneTealA = pixmap(['.t.t.t.', 'tTtTtTt', '.TTTTT.', '..TTT..'], POOL_PAL);
   const anemoneTealB = pixmap(['t..t..t', '.TtTtT.', '.TTTTT.', '..TTT..'], POOL_PAL);
-  const seaweedA = pixmap(['.k..k.', 'kK.kK.', '.KkK..', '.KKk..', 'kKKK..', '.DKD..', '.DDD..'], POOL_PAL);
-  const seaweedB = pixmap(['..k..k', '.kK.kK', '..KkK.', '..kKK.', '..KKKk', '..DKD.', '..DDD.'], POOL_PAL);
+  const seaweed = pixmap(['.k..k.', 'kK.kK.', '.KkK..', '.KKk..', 'kKKK..', '.DKD..', '.DDD..'], POOL_PAL);
 
-  const sailboat = pixmap(
-    [
-      '.............M..............',
-      '.............Mc.............',
-      '.............Mcc............',
-      '............cMccc...........',
-      '...........ccMcccC..........',
-      '..........cccMccccC.........',
-      '.........ccccMccccCC........',
-      '........cccccMcccccCC.......',
-      '.......ccccccMcccccCCC......',
-      '......cccccccMccccccCC......',
-      '.....ccccccccMccccccCCC.....',
-      '....cccccccccMcccccccCC.....',
-      '...CCCCCCCCCCMcccccccQQQ....',
-      '..CCCCCCCCCCCMCCCCCCCQQQQ...',
-      '.QQQQQQQQQQQQMQQQQQQQQQQQ...',
-      '.............M..............',
-      '.............M..............',
-      '..TTTTTTTTTTTTTTTTTTTTTTTT..',
-      '.rRRRRRRRRRRRRRRRRRRRRRRRRr.',
-      '..WWWWWWWWWWWWWWWWWWWWWWWW..',
-      '...tttttttttttttttttttttt...',
-    ],
-    BOAT_PAL,
-  );
+  const sailboatRows = [
+    '.............M..............',
+    '.............Mc.............',
+    '.............Mcc............',
+    '............cMccc...........',
+    '...........ccMcccC..........',
+    '..........cccMccccC.........',
+    '.........ccccMccccCC........',
+    '........cccccMcccccCC.......',
+    '.......ccccccMcccccCCC......',
+    '......cccccccMccccccCC......',
+    '.....ccccccccMccccccCCC.....',
+    '....cccccccccMcccccccCC.....',
+    '...CCCCCCCCCCMcccccccQQQ....',
+    '..CCCCCCCCCCCMCCCCCCCQQQQ...',
+    '.QQQQQQQQQQQQMQQQQQQQQQQQ...',
+    '.............M..............',
+    '.............M..............',
+    '..TTTTTTTTTTTTTTTTTTTTTTTT..',
+    '.rRRRRRRRRRRRRRRRRRRRRRRRRr.',
+    '..WWWWWWWWWWWWWWWWWWWWWWWW..',
+    '...tttttttttttttttttttttt...',
+  ];
+  const sailboat = pixmap(sailboatRows.map((row) => row.replace(/[cCQ]/g, '.')), BOAT_PAL);
+  const sailCloth = pixmap(sailboatRows.map((row) => row.replace(/[^cCQ]/g, '.')), BOAT_PAL);
   const sailboatLight = lightMask(28, 21, 0, '.............Y');
 
   return {
     umbrella,
     towel,
     sandcastle,
-    flagA,
-    flagB,
+    pennant,
     driftwood,
     shells,
     bottleClosed,
@@ -357,8 +352,8 @@ export function buildPropSprites(): PropSprites {
     anemonePinkB,
     anemoneTealA,
     anemoneTealB,
-    seaweedA,
-    seaweedB,
+    seaweed,
+    sailCloth,
     sailboat,
     sailboatLight,
   };

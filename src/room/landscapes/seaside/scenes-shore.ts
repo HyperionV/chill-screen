@@ -1,6 +1,8 @@
 import { css, mix, shade } from '../../../render/color';
 import { seededRandom } from '../../../world/math';
 import { clamp01 } from '../../sky';
+import { breeze } from '../../wind';
+import { drawBentSprite, drawPennant, drawWindSeeds } from './coastal-wind';
 import type { SeasideCreatures } from './creatures';
 import {
   BOTTLE_POS,
@@ -11,11 +13,13 @@ import {
 } from './interactions';
 import type { SeasideSprites } from './sprites';
 import {
+  BOAT_GLIDE,
+  FAR_GLIDE,
   HORIZON,
-  LAYER_PARALLAX,
   SCENE_BEACH,
   SCENE_HARBOUR,
   SHORE,
+  SHORE_GLIDE,
   WHITE,
   drawSprite,
   tintLand,
@@ -34,6 +38,13 @@ const SHELL_SPOTS: readonly { u: number; v: number; kind: number }[] = [
 ];
 
 const LAMP_SPOTS: readonly number[] = [0.10, 0.33, 0.88];
+const DUNE_TUFTS = [0.03, 0.06, 0.10, 0.90, 0.94, 0.97];
+const PIER_NETS = [0.28, 0.72];
+
+/** Peak wind travel in stage pixels at the canopy, grass tips, and bottom of each net. */
+const CANOPY_SWAY = 2;
+const DUNE_SWAY = 3;
+const NET_SWAY = 1;
 
 /** Renders Scene 0: Sandy Beach (upgraded Sea view with footprints, driftwood, shells, sandcastle, umbrella, bottle, crab). */
 export function renderBeachScene(
@@ -42,14 +53,12 @@ export function renderBeachScene(
   sprites: SeasideSprites,
   creatures: SeasideCreatures,
 ): void {
-  const { w, h, unit, time, state, px, py, cameraShiftX, interactions } = rc;
+  const { w, h, unit, time, state, glideX, interactions } = rc;
   const { sky, sun, moon, day } = state;
   const S = buffers.scene.ctx;
   const L = buffers.land.ctx;
   S.clearRect(0, 0, w, h);
   L.clearRect(0, 0, w, h);
-
-  const pan = px + cameraShiftX;
 
   // Layer 2: Distant headland on the left + tiny striped lighthouse
   const hy = Math.round(h * HORIZON);
@@ -60,8 +69,8 @@ export function renderBeachScene(
     const t = i / 20;
     pts.push(Math.sin(Math.PI * Math.min(1, t * 1.25)) * (0.75 + rnd() * 0.25) * (1 - t * 0.6) * 0.04);
   }
-  const hx0 = Math.round((-0.05 * w) + pan * LAYER_PARALLAX[1]);
-  const hx1 = Math.round((0.33 * w) + pan * LAYER_PARALLAX[1]);
+  const hx0 = Math.round(-0.05 * w + glideX * FAR_GLIDE);
+  const hx1 = Math.round(0.33 * w + glideX * FAR_GLIDE);
   S.fillStyle = headBase;
   for (let x = Math.max(0, hx0); x <= Math.min(w - 1, hx1); x++) {
     const t = (x - hx0) / Math.max(1, hx1 - hx0);
@@ -72,7 +81,7 @@ export function renderBeachScene(
     S.fillRect(x, hy - colH, 1, colH + 1);
   }
 
-  const lhX = Math.round(w * 0.255 + pan * LAYER_PARALLAX[1]);
+  const lhX = Math.round(w * 0.255 + glideX * FAR_GLIDE);
   const lhTall = Math.round(7 * unit);
   const lhTop = Math.round(hy - h * 0.03 - lhTall);
   S.fillStyle = css(shade(mix(WHITE, sky.horizon, 0.3), 0.55 + 0.45 * day));
@@ -82,29 +91,29 @@ export function renderBeachScene(
   S.fillRect(lhX, lhTop + 5, 2, 1);
 
   // Layer 3: Open sea, sun/moon glitter, rolling surf & wet/dry sand
-  drawOpenWater(S, w, h, unit, sky, day, time, SHORE, 1, 1, pan);
-  drawGlitter(S, w, h, unit, sky, sun, moon, day, time, SHORE, pan);
-  const sand = drawBeachSurf(S, w, h, unit, sky, day, time, SHORE, 0, pan);
+  drawOpenWater(S, w, h, unit, sky, day, time, SHORE, 1, 1, glideX);
+  drawGlitter(S, w, h, unit, sky, sun, moon, day, time, SHORE, glideX);
+  const sand = drawBeachSurf(S, w, h, unit, sky, day, time, SHORE, 0, glideX);
   drawRipplesAndFish(S, w, h, unit, interactions.ripples, interactions.fishLeaps, sprites, sky, day);
-  drawFootprints(S, w, h, unit, interactions.footprints, sand, pan, 19);
+  drawFootprints(S, w, h, unit, interactions.footprints, sand, glideX, 19);
 
   // Layer 4: Beach props on land buffer (tinted cleanly by hour)
-  const nearPan = pan * LAYER_PARALLAX[3];
-  const nearY = py * 0.5;
+  const shoreGlide = glideX * SHORE_GLIDE;
 
   // Umbrella & striped towel by day
   if (day > 0.25) {
-    const ux = Math.round(0.18 * w + nearPan);
-    const uy = Math.round(0.79 * h + nearY);
+    const ux = Math.round(0.18 * w + shoreGlide);
+    const uy = Math.round(0.79 * h);
     L.fillStyle = 'rgba(20,16,12,0.22)';
     L.fillRect(ux - Math.round(9 * unit), uy - 1, Math.round(18 * unit), Math.max(2, Math.round(2 * unit)));
     drawSprite(L, sprites.towel, ux + Math.round(3 * unit), uy - Math.round(2 * unit), unit);
-    drawSprite(L, sprites.umbrella, ux - (sprites.umbrella.width * unit) / 2, uy - sprites.umbrella.height * unit, unit);
+    const canopySway = breeze(time, 0.18 * w) * CANOPY_SWAY;
+    drawBentSprite(L, sprites.umbrella, ux - (sprites.umbrella.width * unit) / 2, uy - sprites.umbrella.height * unit, unit, canopySway);
   }
 
   // Sun-bleached driftwood log
-  const dwx = Math.round(0.285 * w + nearPan);
-  const dwy = Math.round(0.845 * h + nearY);
+  const dwx = Math.round(0.285 * w + shoreGlide);
+  const dwy = Math.round(0.845 * h);
   L.fillStyle = 'rgba(20,16,12,0.20)';
   L.fillRect(dwx - Math.round(10 * unit), dwy - 1, Math.round(20 * unit), 1);
   drawSprite(L, sprites.driftwood, dwx - (sprites.driftwood.width * unit) / 2, dwy - sprites.driftwood.height * unit, unit);
@@ -112,21 +121,21 @@ export function renderBeachScene(
   // Scattered shells
   for (const sh of SHELL_SPOTS) {
     const sp = sprites.shells[sh.kind % sprites.shells.length];
-    drawSprite(L, sp, sh.u * w + nearPan - (sp.width * unit) / 2, sh.v * h + nearY - sp.height * unit, unit);
+    drawSprite(L, sp, sh.u * w + shoreGlide - (sp.width * unit) / 2, sh.v * h - sp.height * unit, unit);
   }
 
   // Sandcastle with fluttering pennant flag
-  const scx = Math.round(0.81 * w + nearPan);
-  const scy = Math.round(0.80 * h + nearY);
+  const scx = Math.round(0.81 * w + shoreGlide);
+  const scy = Math.round(0.80 * h);
   L.fillStyle = 'rgba(20,16,12,0.22)';
   L.fillRect(scx - Math.round(10 * unit), scy - 1, Math.round(20 * unit), 2);
   drawSprite(L, sprites.sandcastle, scx - (sprites.sandcastle.width * unit) / 2, scy - sprites.sandcastle.height * unit, unit);
-  const flagSp = Math.floor(time * 4) % 2 === 0 ? sprites.flagA : sprites.flagB;
-  drawSprite(L, flagSp, scx - Math.round(1 * unit), scy - (sprites.sandcastle.height + flagSp.height - 1) * unit, unit);
+  const flagTop = scy - (sprites.sandcastle.height + sprites.pennant.height - 1) * unit;
+  drawPennant(L, sprites.pennant, scx - Math.round(unit), flagTop, unit, breeze(time, 0.81 * w));
 
   // Washed-up green glass bottle (closed or open with popped cork)
-  const bx = Math.round(BOTTLE_POS.u * w + nearPan);
-  const by = Math.round(BOTTLE_POS.v * h + nearY);
+  const bx = Math.round(BOTTLE_POS.u * w + shoreGlide);
+  const by = Math.round(BOTTLE_POS.v * h);
   const bottleSp = interactions.bottle.open ? sprites.bottleOpen : sprites.bottleClosed;
   drawSprite(L, bottleSp, bx - (bottleSp.width * unit) / 2, by - bottleSp.height * unit, unit);
   if (interactions.bottle.open) {
@@ -137,10 +146,11 @@ export function renderBeachScene(
   }
 
   // Shore gulls & recurring red crab
-  creatures.drawLandCast(L, SCENE_BEACH, w, h, unit, sprites, pan, py);
+  creatures.drawLandCast(L, SCENE_BEACH, w, h, unit, sprites, glideX);
 
   // Layer 5: Foreground swaying dune grass tufts at bottom corners
-  drawDuneTufts(L, w, h, unit, time, pan * LAYER_PARALLAX[4]);
+  drawDuneTufts(L, w, h, unit, time, glideX);
+  drawWindSeeds(L, rc, 0.06, 0.96, '#aa9e60');
 
   tintLand(L, w, h, state);
   S.drawImage(buffers.land.canvas, 0, 0);
@@ -164,8 +174,8 @@ export function renderBeachScene(
     }
   }
 
-  creatures.drawSkyGulls(S, day, time, w, h, pan);
-  drawBottleNote(S, w, h, unit, interactions.bottle, pan);
+  creatures.drawSkyGulls(S, day, time, w, h, glideX);
+  drawBottleNote(S, w, h, unit, interactions.bottle, glideX);
 }
 
 /** Renders Scene 1: Fishing Harbour (wooden pier, 3 rocking boats, nets, crates, harbour cat, lamps, red crab). */
@@ -175,32 +185,30 @@ export function renderHarbourScene(
   sprites: SeasideSprites,
   creatures: SeasideCreatures,
 ): void {
-  const { w, h, unit, time, state, px, py, cameraShiftX, interactions } = rc;
+  const { w, h, unit, time, state, glideX, interactions } = rc;
   const { sky, sun, moon, day } = state;
   const S = buffers.scene.ctx;
   const L = buffers.land.ctx;
   S.clearRect(0, 0, w, h);
   L.clearRect(0, 0, w, h);
 
-  const pan = px + cameraShiftX;
   const hy = Math.round(h * HORIZON);
 
   // Layer 2: Distant harbour breakwater wall on the right
-  const bwX = Math.round(0.70 * w + pan * LAYER_PARALLAX[1]);
+  const bwX = Math.round(0.70 * w + glideX * FAR_GLIDE);
   const bwH = Math.max(2, Math.round(4 * unit));
   S.fillStyle = css(shade(mix(sky.horizon, sky.zenith, 0.45), 0.55));
   S.fillRect(bwX, hy - bwH, w - bwX + 10, bwH + 1);
   S.fillRect(bwX + Math.round(4 * unit), hy - bwH - Math.round(3 * unit), Math.max(2, Math.round(2 * unit)), Math.round(3 * unit));
 
   // Layer 3: Harbour open water & glitter
-  drawOpenWater(S, w, h, unit, sky, day, time, 0.96, 1, 0.72, pan);
-  drawGlitter(S, w, h, unit, sky, sun, moon, day, time, 0.85, pan);
+  drawOpenWater(S, w, h, unit, sky, day, time, 0.96, 1, 0.72, glideX);
+  drawGlitter(S, w, h, unit, sky, sun, moon, day, time, 0.85, glideX);
   drawRipplesAndFish(S, w, h, unit, interactions.ripples, interactions.fishLeaps, sprites, sky, day);
 
   // Layer 4: Boats, wooden pier, pilings, nets, crates, lamps, cat, red crab, gulls
-  const midPan = pan * LAYER_PARALLAX[2];
-  const nearPan = pan * LAYER_PARALLAX[3];
-  const nearY = py * 0.5;
+  const boatGlide = glideX * BOAT_GLIDE;
+  const shoreGlide = glideX * SHORE_GLIDE;
 
   // Three rocking fishing boats
   const boatLightsPos: { x: number; y: number; sp: HTMLCanvasElement }[] = [];
@@ -210,7 +218,7 @@ export function renderHarbourScene(
     const extraBob = bob.age < bob.duration ? Math.sin((bob.age / bob.duration) * Math.PI * 3) * (1 - bob.age / bob.duration) * 3.5 * unit : 0;
     const rock = Math.sin(time * 1.4 + i * 2.1) * 1.1 * unit + extraBob;
     const sp = sprites.boats[i];
-    const bx = Math.round(spot.u * w + midPan - (sp.width * unit) / 2);
+    const bx = Math.round(spot.u * w + boatGlide - (sp.width * unit) / 2);
     const by = Math.round(spot.v * h + rock - sp.height * unit);
     // Subtle dark hull reflection
     S.fillStyle = css(shade(sky.water, 0.6), 0.4);
@@ -220,37 +228,36 @@ export function renderHarbourScene(
   }
 
   // Wooden pier structure (left quay, right quay, back catwalk)
-  drawPier(L, w, h, unit, time, nearPan, nearY);
+  drawPier(L, w, h, unit, time, shoreGlide);
 
   // Draped fishing nets along pier edges
-  drawPierNets(L, w, h, unit, nearPan, nearY);
+  drawPierNets(L, w, h, unit, time, shoreGlide);
 
   // Crates on left and right pier
-  drawSprite(L, sprites.crateStack, Math.round(0.125 * w + nearPan), Math.round(0.70 * h + nearY - sprites.crateStack.height * unit), unit);
-  drawSprite(L, sprites.crate, Math.round(0.82 * w + nearPan - (sprites.crate.width * unit) / 2), Math.round(0.70 * h + nearY - sprites.crate.height * unit), unit);
+  drawSprite(L, sprites.crateStack, Math.round(0.125 * w + shoreGlide), Math.round(0.70 * h - sprites.crateStack.height * unit), unit);
+  drawSprite(L, sprites.crate, Math.round(0.82 * w + shoreGlide - (sprites.crate.width * unit) / 2), Math.round(0.70 * h - sprites.crate.height * unit), unit);
 
   // Harbour lamp posts
   const lampGlows: { x: number; y: number }[] = [];
   for (const lu of LAMP_SPOTS) {
-    const lx = Math.round(lu * w + nearPan - (sprites.lampPost.width * unit) / 2);
-    const ly = Math.round(0.70 * h + nearY - sprites.lampPost.height * unit);
+    const lx = Math.round(lu * w + shoreGlide - (sprites.lampPost.width * unit) / 2);
+    const ly = Math.round(0.70 * h - sprites.lampPost.height * unit);
     drawSprite(L, sprites.lampPost, lx, ly, unit);
-    lampGlows.push({ x: Math.round(lu * w + nearPan), y: ly + Math.round(2 * unit) });
+    lampGlows.push({ x: Math.round(lu * w + shoreGlide), y: ly + Math.round(2 * unit) });
   }
 
   // Harbour cat, red crab on right crate, perched gulls
-  creatures.drawLandCast(L, SCENE_HARBOUR, w, h, unit, sprites, pan, py);
+  creatures.drawLandCast(L, SCENE_HARBOUR, w, h, unit, sprites, glideX);
 
   // Layer 5: Foreground dock corners with bollards & coiled ropes
-  const fgPan = pan * LAYER_PARALLAX[4];
   L.fillStyle = '#4a301d';
-  L.fillRect(0, Math.round(h * 0.92), Math.round(w * 0.16 + fgPan), Math.round(h * 0.08));
-  L.fillRect(Math.round(w * 0.84 + fgPan), Math.round(h * 0.92), Math.round(w * 0.18), Math.round(h * 0.08));
+  L.fillRect(0, Math.round(h * 0.92), Math.round(w * 0.16 + glideX), Math.round(h * 0.08));
+  L.fillRect(Math.round(w * 0.84 + glideX), Math.round(h * 0.92), Math.round(w * 0.18), Math.round(h * 0.08));
   L.fillStyle = '#6b472c';
-  L.fillRect(0, Math.round(h * 0.92), Math.round(w * 0.16 + fgPan), Math.max(2, Math.round(2 * unit)));
-  L.fillRect(Math.round(w * 0.84 + fgPan), Math.round(h * 0.92), Math.round(w * 0.18), Math.max(2, Math.round(2 * unit)));
-  drawSprite(L, sprites.bollard, Math.round(0.08 * w + fgPan), Math.round(0.92 * h - sprites.bollard.height * unit), unit);
-  drawSprite(L, sprites.bollard, Math.round(0.90 * w + fgPan), Math.round(0.92 * h - sprites.bollard.height * unit), unit);
+  L.fillRect(0, Math.round(h * 0.92), Math.round(w * 0.16 + glideX), Math.max(2, Math.round(2 * unit)));
+  L.fillRect(Math.round(w * 0.84 + glideX), Math.round(h * 0.92), Math.round(w * 0.18), Math.max(2, Math.round(2 * unit)));
+  drawSprite(L, sprites.bollard, Math.round(0.08 * w + glideX), Math.round(0.92 * h - sprites.bollard.height * unit), unit);
+  drawSprite(L, sprites.bollard, Math.round(0.90 * w + glideX), Math.round(0.92 * h - sprites.bollard.height * unit), unit);
 
   tintLand(L, w, h, state);
   S.drawImage(buffers.land.canvas, 0, 0);
@@ -284,25 +291,25 @@ export function renderHarbourScene(
     }
   }
 
-  creatures.drawSkyGulls(S, day, time, w, h, pan);
+  creatures.drawSkyGulls(S, day, time, w, h, glideX);
 }
 
-function drawPier(L: CanvasRenderingContext2D, w: number, h: number, unit: number, time: number, panX: number, panY: number): void {
-  const deckY = Math.round(0.70 * h + panY);
+function drawPier(L: CanvasRenderingContext2D, w: number, h: number, unit: number, time: number, glideX: number): void {
+  const deckY = Math.round(0.70 * h);
   const deckH = Math.max(4, Math.round(6 * unit));
-  const leftEnd = Math.round(0.37 * w + panX);
-  const rightStart = Math.round(0.63 * w + panX);
+  const leftEnd = Math.round(0.37 * w + glideX);
+  const rightStart = Math.round(0.63 * w + glideX);
 
   // Far connecting catwalk behind central bay
   L.fillStyle = '#5e3d26';
-  L.fillRect(leftEnd - 2, Math.round(0.665 * h + panY), rightStart - leftEnd + 4, Math.max(2, Math.round(3 * unit)));
+  L.fillRect(leftEnd - 2, Math.round(0.665 * h), rightStart - leftEnd + 4, Math.max(2, Math.round(3 * unit)));
 
   // Pilings into water
   const pilings = [0.06, 0.16, 0.27, 0.35, 0.65, 0.74, 0.85, 0.94];
   const pw = Math.max(3, Math.round(4 * unit));
   const pTall = Math.round(18 * unit);
   for (const pu of pilings) {
-    const px = Math.round(pu * w + panX);
+    const px = Math.round(pu * w + glideX);
     L.fillStyle = '#472f1e';
     L.fillRect(px, deckY + deckH - 1, pw, pTall);
     L.fillStyle = '#6e492f';
@@ -329,35 +336,40 @@ function drawPier(L: CanvasRenderingContext2D, w: number, h: number, unit: numbe
   }
 }
 
-function drawPierNets(L: CanvasRenderingContext2D, w: number, h: number, unit: number, panX: number, panY: number): void {
-  const y0 = Math.round(0.705 * h + panY);
+function drawPierNets(L: CanvasRenderingContext2D, w: number, h: number, unit: number, time: number, glideX: number): void {
+  const y0 = Math.round(0.705 * h);
   const netSpan = Math.round(18 * unit);
-  for (const nu of [0.28, 0.72]) {
-    const x0 = Math.round(nu * w + panX);
+  for (const nu of PIER_NETS) {
+    const x0 = Math.round(nu * w + glideX);
+    const sway = breeze(time, nu * w) * NET_SWAY;
     L.fillStyle = '#36586b';
     for (let dx = 0; dx < netSpan; dx += 2) {
-      const sag = Math.round(Math.sin((dx / netSpan) * Math.PI) * 7 * unit);
-      L.fillRect(x0 + dx, y0, 1, sag + 2);
+      const hang = Math.sin((dx / netSpan) * Math.PI);
+      const sag = Math.round(hang * 7 * unit);
+      const middle = Math.max(1, Math.floor(sag * 0.5));
+      const bottomShift = Math.round(sway * hang);
+      L.fillRect(x0 + dx, y0, 1, middle + 1);
+      L.fillRect(x0 + dx + bottomShift, y0 + middle + 1, 1, sag + 1 - middle);
       if (dx % 4 === 0) {
         L.fillStyle = '#597f94';
-        L.fillRect(x0 + dx, y0 + Math.max(1, Math.floor(sag * 0.5)), 2, 1);
+        L.fillRect(x0 + dx, y0 + middle, 2, 1);
         L.fillStyle = '#36586b';
       }
     }
   }
 }
 
-function drawDuneTufts(L: CanvasRenderingContext2D, w: number, h: number, unit: number, time: number, fgPan: number): void {
-  const spots = [0.03, 0.06, 0.10, 0.90, 0.94, 0.97];
-  for (const su of spots) {
-    const bx = Math.round(su * w + fgPan);
-    const sway = Math.round(Math.sin(time * 1.4 + su * 20) * 2 * unit);
+function drawDuneTufts(L: CanvasRenderingContext2D, w: number, h: number, unit: number, time: number, glideX: number): void {
+  for (const su of DUNE_TUFTS) {
+    const bx = Math.round(su * w + glideX);
     for (let b = -2; b <= 2; b++) {
       const bladeH = Math.round((8 + ((Math.abs(b) + Math.round(su * 10)) % 3) * 3) * unit);
+      const rootOffset = b * Math.round(2 * unit);
+      const sway = breeze(time, su * w + rootOffset) * DUNE_SWAY;
       L.fillStyle = b % 2 === 0 ? '#3f6336' : '#568046';
       for (let y = 0; y < bladeH; y++) {
         const lean = Math.round((y / bladeH) * (b * 1.3 + sway));
-        L.fillRect(bx + b * Math.round(2 * unit) + lean, h - y - 1, Math.max(1, Math.round(unit)), 1);
+        L.fillRect(bx + rootOffset + lean, h - y - 1, Math.max(1, Math.round(unit)), 1);
       }
     }
   }
