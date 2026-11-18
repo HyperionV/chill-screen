@@ -74,11 +74,11 @@ export class LakeCreatures {
       activity: 'rest', size, facing: false, phase });
   }
 
-  press(x: number, y: number, scene: number, px: number): boolean {
+  press(x: number, y: number, scene: number): boolean {
     for (const a of this.animals) {
       if (a.scene !== scene) continue;
       const height = a.kind === 'swan' ? 13 : 5;
-      if (Math.hypot(x - (a.x + px * 3), y - a.y + height * this.unit) > HIT_RADIUS * this.unit * a.size) continue;
+      if (Math.hypot(x - a.x, y - a.y + height * this.unit) > HIT_RADIUS * this.unit * a.size) continue;
       if (a.kind === 'turtle') continue;
       a.age = 0;
       if (a.kind === 'dragonfly' || a.kind === 'frog') {
@@ -87,7 +87,7 @@ export class LakeCreatures {
         a.goalY = a.homeY;
       } else {
         a.activity = 'seek';
-        a.goalX = x - px * 3;
+        a.goalX = x;
         a.goalY = Math.max(this.h * 0.59, Math.min(this.h * 0.9, y));
       }
       return true;
@@ -95,7 +95,7 @@ export class LakeCreatures {
     return false;
   }
 
-  update(frame: ViewFrame, scene: number, next: number, water: LakeWater, px: number): void {
+  update(frame: ViewFrame, scene: number, next: number, water: LakeWater): void {
     this.time = frame.time;
     const dt = frame.dt;
     for (const a of this.animals) {
@@ -104,7 +104,7 @@ export class LakeCreatures {
       a.wait -= dt;
       const amphibian = a.kind === 'frog' || a.kind === 'dragonfly';
       if (amphibian && frame.pointer && a.activity !== 'react' &&
-        Math.hypot(frame.pointer.x - a.x - px * 3, frame.pointer.y - a.y) < 20 * this.unit) {
+        Math.hypot(frame.pointer.x - a.x, frame.pointer.y - a.y) < 20 * this.unit) {
         a.activity = 'react';
         a.age = 0;
         a.goalX = a.homeX + Math.sign(a.x - frame.pointer.x || 1) * 22 * this.unit;
@@ -138,7 +138,7 @@ export class LakeCreatures {
         a.facing = dx < 0;
       }
       if (distance < Math.max(1, speed * dt) || (a.activity === 'react' && a.age >= LEAP_SECONDS)) {
-        if (a.kind === 'frog' && a.activity === 'react') water.ripple(a.x + px * 3, a.y, true);
+        if (a.kind === 'frog' && a.activity === 'react') water.ripple(a.x, a.y, true);
         a.activity = 'rest';
         a.wait = 4 + hash(a.phase + frame.time) * 10;
         a.age = 0;
@@ -160,12 +160,12 @@ export class LakeCreatures {
     }
   }
 
-  draw(ctx: CanvasRenderingContext2D, scene: number, px: number, sprites: Sprites, day: number): void {
+  draw(ctx: CanvasRenderingContext2D, scene: number, sprites: Sprites, day: number): void {
     const u = this.unit;
     for (const a of this.animals) {
       if (a.scene !== scene) continue;
       let y = a.y;
-      let x = a.x + px * 3;
+      let x = a.x;
       if (a.kind === 'dragonfly') {
         x += Math.sin(this.time * 1.1 + a.phase) * 3 * u;
         y += Math.cos(this.time * 1.5 + a.phase) * 2 * u;
@@ -216,12 +216,12 @@ export class LakeCreatures {
     }
   }
 
-  eagle(ctx: CanvasRenderingContext2D, scene: number, px: number): void {
+  eagle(ctx: CanvasRenderingContext2D, scene: number): void {
     if (scene !== 3) return;
     const u = this.unit;
     const cycle = (this.time % 76) / 76;
     if (cycle > 0.62) return;
-    const x = Math.round((-0.1 + cycle / 0.62 * 1.2) * this.w + px * 0.5);
+    const x = Math.round((-0.1 + cycle / 0.62 * 1.2) * this.w);
     const y = Math.round(this.h * 0.2 + Math.sin(this.time * 0.2) * 3 * u);
     const wings = Math.sin(this.time * 0.8) > 0.6 ? 1 : -1;
     ctx.fillStyle = '#4d6061';

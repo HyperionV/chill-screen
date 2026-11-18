@@ -2,8 +2,6 @@ import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash, noise } from '../../journeys/noise';
 import { DESIGN_HEIGHT, SCENES, WATERLINE } from './scenes';
 
-const MIN_MARGIN = 5;
-const FOREST_PARALLAX = 1.8;
 const RIDGE_STEP = 13;
 const SNOWLINE = 0.34;
 const WATER_EDGE = 2;
@@ -38,11 +36,10 @@ interface TerrainScene {
   layers: TerrainSlice[];
 }
 
-function ridgeHeights(w: number, h: number, margin: number, peak: number, scene: number, depth: number): Int16Array {
+function ridgeHeights(w: number, h: number, peak: number, scene: number, depth: number): Int16Array {
   const unit = h / DESIGN_HEIGHT;
-  const columns = new Int16Array(w + margin * 2);
-  for (let i = 0; i < columns.length; i++) {
-    const x = i - margin;
+  const columns = new Int16Array(w);
+  for (let x = 0; x < w; x++) {
     const u = x / w;
     const left = Math.max(0, 1 - Math.abs(u - 0.17 - scene * 0.014) * 3.7);
     const right = Math.max(0, 1 - Math.abs(u - 0.76) * 4.5);
@@ -50,7 +47,7 @@ function ridgeHeights(w: number, h: number, margin: number, peak: number, scene:
     const brokenRock = (noise(x / (13 * unit)) - 0.5) * 5 + noise(x * 0.15) * 2;
     const base = h * (0.49 - Math.max(left, right, center) * (0.17 + peak));
     const terrace = depth * (RIDGE_STEP + noise(x * 0.02 + depth * 17) * 5);
-    columns[i] = Math.round(base + (terrace - brokenRock) * unit);
+    columns[x] = Math.round(base + (terrace - brokenRock) * unit);
   }
   return columns;
 }
@@ -106,11 +103,11 @@ function paintTreeline(w: number, height: number, unit: number, night: boolean):
   return canvas;
 }
 
-function drawSlice(ctx: CanvasRenderingContext2D, slice: TerrainSlice, x: number, y: number, day: number): void {
-  if (day < 1) ctx.drawImage(slice.night, x, y);
+function drawSlice(ctx: CanvasRenderingContext2D, slice: TerrainSlice, day: number): void {
+  if (day < 1) ctx.drawImage(slice.night, 0, slice.top);
   if (day > 0) {
     ctx.globalAlpha = day;
-    ctx.drawImage(slice.day, x, y);
+    ctx.drawImage(slice.day, 0, slice.top);
     ctx.globalAlpha = 1;
   }
 }
@@ -118,16 +115,13 @@ function drawSlice(ctx: CanvasRenderingContext2D, slice: TerrainSlice, x: number
 export class LakeTerrain {
   private scenes: TerrainScene[] = [];
   private forest: TerrainSlice | null = null;
-  private margin = MIN_MARGIN;
 
   resize(w: number, h: number): void {
     const unit = h / DESIGN_HEIGHT;
-    const margin = Math.max(MIN_MARGIN, Math.ceil(FOREST_PARALLAX * unit));
-    this.margin = margin;
     this.scenes = SCENES.map(({ peak }, scene) => {
-      const ridge = ridgeHeights(w, h, margin, peak, scene, 0);
+      const ridge = ridgeHeights(w, h, peak, scene, 0);
       const layers = DAY_RIDGES.map((palette, depth) => {
-        const columns = depth === 0 ? ridge : ridgeHeights(w, h, margin, peak, scene, depth);
+        const columns = depth === 0 ? ridge : ridgeHeights(w, h, peak, scene, depth);
         let top = columns[0];
         for (const y of columns) top = Math.min(top, y);
         return { top, day: paintRidge(columns, h, top, palette, depth), night: paintRidge(columns, h, top, NIGHT_RIDGES[depth], depth) };
@@ -135,26 +129,22 @@ export class LakeTerrain {
       return { ridge, layers };
     });
     const height = Math.ceil(22 * unit) + WATER_EDGE;
-    const width = w + margin * 2;
     this.forest = {
       top: Math.round(h * WATERLINE) - height,
-      day: paintTreeline(width, height, unit, false),
-      night: paintTreeline(width, height, unit, true),
+      day: paintTreeline(w, height, unit, false),
+      night: paintTreeline(w, height, unit, true),
     };
   }
 
-  draw(ctx: CanvasRenderingContext2D, scene: number, day: number, px: number, py: number): void {
+  draw(ctx: CanvasRenderingContext2D, scene: number, day: number): void {
     const { layers } = this.scenes[scene];
-    for (let depth = 0; depth < layers.length; depth++) {
-      const layer = layers[depth];
-      drawSlice(ctx, layer, Math.round(px * (0.5 + depth * 0.5)) - this.margin, layer.top + Math.round(py * depth * 0.3), day);
-    }
-    if (this.forest) drawSlice(ctx, this.forest, Math.round(px * FOREST_PARALLAX) - this.margin, this.forest.top, day);
+    for (const layer of layers) drawSlice(ctx, layer, day);
+    if (this.forest) drawSlice(ctx, this.forest, day);
   }
 
-  ridgeAt(scene: number, x: number, px: number): number {
+  ridgeAt(scene: number, x: number): number {
     const { ridge } = this.scenes[scene];
-    const column = Math.round(x) - Math.round(px * 0.5) + this.margin;
+    const column = Math.round(x);
     return ridge[Math.max(0, Math.min(ridge.length - 1, column))];
   }
 }
