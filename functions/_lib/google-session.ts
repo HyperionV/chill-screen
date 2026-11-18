@@ -61,8 +61,14 @@ async function startSession(request: Request, secret: string): Promise<Response>
     grant_type: 'authorization_code',
   });
   if (!ok) return json({ error: reply.error ?? 'google_refused' }, 401);
-  const cookie: Record<string, string> = reply.refresh_token ? { 'set-cookie': refreshCookie(reply.refresh_token, COOKIE_MAX_AGE_SECONDS) } : {};
-  return passResponse(reply, cookie);
+  if (!reply.refresh_token) {
+    // Google only issues a renewal key on the first approval. A person who approved the app before (for example with the
+    // old one-hour sign-in) gets a pass with no key, which would ask them to sign in again within the hour. Withdrawing
+    // the old approval makes the next sign-in show the approval screen again and issue the key.
+    if (reply.access_token) await askGoogle(REVOKE_URL, { token: reply.access_token });
+    return json({ error: 'no_renewal_key' }, 409);
+  }
+  return passResponse(reply, { 'set-cookie': refreshCookie(reply.refresh_token, COOKIE_MAX_AGE_SECONDS) });
 }
 
 /** Hands out a fresh one-hour pass, using the cookie's renewal key. A key Google no longer accepts is cleared. */

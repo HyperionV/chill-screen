@@ -44,6 +44,7 @@ async function post(action: string, body: Record<string, string>): Promise<Respo
 export async function startSession(code: string, clientId: string): Promise<Pass> {
   const res = await post('session', { code, clientId });
   const body: unknown = await res.json().catch(() => null);
+  if (res.status === 409) throw new SessionError('One more step to make the sign-in last: choose Sign in again and approve the access.');
   if (!res.ok || !isPassReply(body)) throw new SessionError('Google did not accept the sign-in. Try again.');
   return toPass(body);
 }

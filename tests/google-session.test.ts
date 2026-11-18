@@ -49,6 +49,16 @@ describe('Google sign-in session', () => {
     expect(calls[0]?.form.get('redirect_uri')).toBe('postmessage');
   });
 
+  it('withdraws an earlier approval when Google sends no renewal key, so the next sign-in issues one', async () => {
+    const calls = fakeGoogle(200, { access_token: 'pass-1', expires_in: 3599 });
+    const res = await post('session', { code: 'one-time', clientId: CLIENT_ID });
+
+    expect(res.status).toBe(409);
+    expect(res.headers.get('set-cookie')).toBeNull();
+    expect(calls[1]?.url).toContain('/revoke');
+    expect(calls[1]?.form.get('token')).toBe('pass-1');
+  });
+
   it('renews the pass from the cookie, and signs out only when Google says the key is dead', async () => {
     const renewed = fakeGoogle(200, { access_token: 'pass-2', expires_in: 3599 });
     const ok = await post('token', { clientId: CLIENT_ID }, 'cs_refresh=key-1');

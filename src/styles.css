@@ -216,6 +216,7 @@ body.idle .dock {
 .panel-body {
   flex: 1;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
   padding: 8px 18px 18px;
 }
@@ -304,15 +305,17 @@ body.idle .dock {
 
 .segmented {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 3px;
   background: rgba(0, 0, 0, 0.24);
 }
 
 .seg {
-  flex: 1;
+  flex: 1 1 auto;
+  min-width: 0;
   height: 28px;
-  padding: 0 8px;
+  padding: 0 5px;
   border: 0;
   background: transparent;
   color: var(--muted);
@@ -655,5 +658,50 @@ body.idle .dock {
 
   .dock-badge {
     display: none;
+  }
+}
+
+/* Scrollbars: slim square bars in the pixel style, quiet until used. The thumb is a 6px bar inside a 10px track. */
+* {
+  --scroll-thumb: color-mix(in srgb, var(--muted) 42%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, var(--accent) 75%, transparent);
+  --scroll-track: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+}
+
+*::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  background: var(--scroll-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:active {
+  background: var(--accent);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-button,
+*::-webkit-scrollbar-corner {
+  display: none;
+}
+
+/* Firefox has no pseudo-elements; Chromium ignores the standard properties here so the rules above keep applying. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
   }
 }
