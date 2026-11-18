@@ -1,11 +1,14 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash, noise } from '../../journeys/noise';
-import { layout } from './scenes';
+import { DESIGN_HEIGHT, layout } from './scenes';
 import { line, oval, PALETTE, type GardenSprites } from './sprites';
 
-const HEIGHT = 270;
-const LAYER_MARGIN = 8;
-export interface Scenery { layers: HTMLCanvasElement[] }
+const HEIGHT = DESIGN_HEIGHT;
+
+export interface Scenery {
+  layers: HTMLCanvasElement[];
+  pondSteps: HTMLCanvasElement | null;
+}
 
 function rock(ctx: CanvasRenderingContext2D, x: number, y: number, size: number): void {
   oval(ctx, x + 3, y + 2, size + 6, size * 0.28, '#aaa68b');
@@ -94,32 +97,17 @@ function house(ctx: CanvasRenderingContext2D, width: number, veranda: boolean): 
   }
 }
 
-function maple(ctx: CanvasRenderingContext2D, width: number): void {
-  for (let n = 0; n < 90; n++) {
-    const x = n;
-    const y = 20 + n * 0.2;
-    ctx.fillStyle = '#514438';
-    ctx.fillRect(x, Math.round(y), 3, Math.max(1, 8 - Math.floor(n / 15)));
-  }
-  for (let n = 0; n < 65; n++) {
-    const x = hash(n + 45) * Math.min(width * 0.29, 145);
-    const y = 8 + hash(n + 94) * 55;
-    line(ctx, x, y + 9, Math.max(0, x - 15), 24, '#61513c');
-    oval(ctx, x, y, 6 + hash(n) * 5, 3 + hash(n + 1) * 3, n % 3 ? '#ad6444' : '#cc8b54');
-    line(ctx, x - 2, y - 2, x + 2, y - 2, '#e1a36a');
-  }
-}
-
 /** All dense grain, sand contours and architecture are painted only on resize. */
 export function buildScenery(scene: number, width: number, sprites: GardenSprites): Scenery {
   const layers: HTMLCanvasElement[] = [];
   const p = layout(scene, width);
+  // Moon Viewing steps are painted over the floating plants.
+  const pondSteps = scene === 4 ? memoryCanvas(width, HEIGHT) : null;
   for (let depth = 0; depth < 5; depth++) {
-    const buffer = memoryCanvas(width + LAYER_MARGIN * 2, HEIGHT);
+    const buffer = memoryCanvas(width, HEIGHT);
     const ctx = buffer.ctx;
-    ctx.translate(LAYER_MARGIN, 0);
     if (depth === 0) {
-      for (let x = -LAYER_MARGIN; x < width + LAYER_MARGIN; x++) {
+      for (let x = 0; x < width; x++) {
         const top = 119 + noise(x / 80 + scene * 7) * 20;
         ctx.fillStyle = '#8eaa96';
         ctx.fillRect(x, Math.round(top), 1, HEIGHT - top);
@@ -130,22 +118,18 @@ export function buildScenery(scene: number, width: number, sprites: GardenSprite
     }
     if (depth === 1) {
       ctx.fillStyle = '#a9ac92';
-      ctx.fillRect(-LAYER_MARGIN, 154, width + 16, 30);
-      line(ctx, -8, 153, width + 8, 153, '#636f5a');
-      line(ctx, -8, 157, width + 8, 157, '#c6c3a6');
+      ctx.fillRect(0, 154, width, 30);
+      line(ctx, 0, 153, width, 153, '#636f5a');
+      line(ctx, 0, 157, width, 157, '#c6c3a6');
       for (let y = 162; y < 183; y += 9) {
-        line(ctx, -8, y, width + 8, y, '#929c82');
+        line(ctx, 0, y, width, y, '#929c82');
         for (let x = (y % 2) * 12; x < width; x += 28) line(ctx, x, y, x, y + 9, '#929c82');
       }
       if (scene !== 3) house(ctx, width, false);
-      for (let i = 0; i < 9; i++) {
-        const x = i < 5 ? i * 21 - 25 : width - (i - 5) * 18;
-        ctx.drawImage(sprites.bamboo, Math.round(x), scene === 2 ? 8 : -32, 30, scene === 2 ? 170 : 187);
-      }
     }
     if (depth === 2) {
       ctx.fillStyle = scene === 0 ? '#d4cfb4' : '#7e8b61';
-      ctx.fillRect(-8, 181, width + 16, HEIGHT - 181);
+      ctx.fillRect(0, 181, width, HEIGHT - 181);
       for (let i = 0; i < width * 3; i++) {
         const x = Math.floor(hash(i + 9) * width);
         const y = 183 + Math.floor(hash(i + 333) * 87);
@@ -154,7 +138,7 @@ export function buildScenery(scene: number, width: number, sprites: GardenSprite
       }
       if (scene === 0) {
         for (let row = 186; row < HEIGHT; row += 5) {
-          for (let x = -8; x < width + 8; x++) {
+          for (let x = 0; x < width; x++) {
             const y = row + Math.round(Math.sin(x / 33 + row / 24) * 2);
             ctx.fillStyle = '#b4b39b'; ctx.fillRect(x, y, 1, 1);
             ctx.fillStyle = '#e8dfc4'; ctx.fillRect(x, y + 1, 1, 1);
@@ -179,20 +163,13 @@ export function buildScenery(scene: number, width: number, sprites: GardenSprite
           const y = p.pond.y + Math.sin(i * 0.71) * p.pond.ry;
           rock(ctx, x, y, 4 + hash(i) * 4);
         }
-        for (let i = 0; i < 9; i++) {
-          const x = width * 0.60 + hash(i + 53) * width * 0.18;
-          const y = 204 + hash(i + 99) * 18;
-          oval(ctx, x, y, 7, 3, '#385f46');
-          line(ctx, x - 3, y - 1, x + 4, y - 1, '#78955a');
-          line(ctx, x, y, x + 6, y + 3, '#527d73');
-          if (i % 3 === 0) { oval(ctx, x, y - 3, 3, 2, '#dfc6b3'); ctx.fillStyle = '#e4c77b'; ctx.fillRect(Math.round(x), Math.round(y - 3), 1, 1); }
-        }
       }
       if (scene === 2 || scene === 3 || scene === 4) {
+        const steps = pondSteps?.ctx ?? ctx;
         for (let i = 0; i < 9; i++) {
           const x = width * 0.24 + Math.sin(i * 0.5) * 22;
-          oval(ctx, x, 181 + i * 10, 10 + i, 3 + i * 0.4, '#596454');
-          line(ctx, x - 6 - i, 179 + i * 10, x + 6 + i, 179 + i * 10, '#b2b29a');
+          oval(steps, x, 181 + i * 10, 10 + i, 3 + i * 0.4, '#596454');
+          line(steps, x - 6 - i, 179 + i * 10, x + 6 + i, 179 + i * 10, '#b2b29a');
         }
       }
     }
@@ -235,19 +212,6 @@ export function buildScenery(scene: number, width: number, sprites: GardenSprite
       }
     }
     if (depth === 4) {
-      if (scene === 0 || scene === 4) maple(ctx, width);
-      for (let i = 0; i < 38; i++) {
-        const x = hash(i + 16) * width;
-        if (x > width * 0.37 && x < width * 0.65) continue;
-        const y = 254 + hash(i + 82) * 16;
-        for (let blade = 0; blade < 4; blade++) {
-          line(ctx, x, y + 8, x + blade * 3 - 5, y - hash(i + blade) * 8, '#3b533c');
-        }
-      }
-      if (scene === 2) {
-        ctx.drawImage(sprites.bamboo, -12, 50, 40, 220);
-        ctx.drawImage(sprites.bamboo, width - 25, 37, 40, 233);
-      }
       for (let i = 0; i < 15; i++) {
         const x = hash(i + 323) * width;
         if (x > width * 0.38 && x < width * 0.63) continue;
@@ -256,5 +220,5 @@ export function buildScenery(scene: number, width: number, sprites: GardenSprite
     }
     layers.push(buffer.canvas);
   }
-  return { layers };
+  return { layers, pondSteps: pondSteps?.canvas ?? null };
 }

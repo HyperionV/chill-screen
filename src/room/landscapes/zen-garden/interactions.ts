@@ -1,5 +1,6 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import type { ViewFrame } from '../../view';
+import { breeze, gust } from '../../wind';
 import { layout, type Spot } from './scenes';
 import { line, oval } from './sprites';
 
@@ -8,6 +9,14 @@ const FEED_SECONDS = 12;
 const GROOVE_FADE_STEP = 0.25;
 const GROOVE_LIFETIME = 60;
 const RADIUS = 22;
+/** Shared-wind sway and drift amplitudes in stage pixels. */
+const CHIME_SWAY = 1.5;
+const CHIME_TAIL_LEVER = 2;
+const STEAM_CALM_DRIFT = 0.5;
+const STEAM_GUST_DRIFT = 1.5;
+const STEAM_WAVE = 0.5;
+const STEAM_CURL = 0.5;
+const WATER_SHIMMER_SWAY = 1.2;
 interface Ripple extends Spot { age: number }
 
 export class GardenInteractions {
@@ -133,7 +142,8 @@ export class GardenInteractions {
       const x = p.pond.x + Math.sin(i * 7.8) * p.pond.rx * 0.86;
       const y = p.pond.y + Math.sin(i * 3.1) * p.pond.ry * 0.78;
       if (((x - p.pond.x) / p.pond.rx) ** 2 + ((y - p.pond.y) / p.pond.ry) ** 2 > 0.82) continue;
-      line(ctx, x + Math.sin(time * 0.3 + i) * 2, y, x + 4 + Math.sin(time * 0.3 + i) * 2, y, i % 2 ? '#729588' : '#446e66');
+      const shimmer = Math.round(Math.sin(time * 0.3 + i) * 1.5 + breeze(time, x) * WATER_SHIMMER_SWAY);
+      line(ctx, Math.round(x) + shimmer, y, Math.round(x) + 4 + shimmer, y, i % 2 ? '#729588' : '#446e66');
     }
     if (this.feed > 0) {
       for (let i = 0; i < 6; i++) {
@@ -163,19 +173,22 @@ export class GardenInteractions {
       }
     }
     if (scene === 3) {
-      const swing = Math.sin(time * 4) * this.chime * 0.9 + Math.sin(time * 0.6);
-      const x = p.chime.x + swing;
+      const swing = Math.sin(time * 4) * this.chime * 0.9 + breeze(time, p.chime.x) * CHIME_SWAY;
+      const x = Math.round(p.chime.x + swing);
+      const tailX = Math.round(p.chime.x + swing * CHIME_TAIL_LEVER);
       line(ctx, p.chime.x, 78, x, p.chime.y, '#706c51');
       oval(ctx, x, p.chime.y, 6, 4, '#5f8a7b');
       line(ctx, x - 4, p.chime.y - 2, x + 2, p.chime.y - 2, '#b2c5a2');
-      line(ctx, x, p.chime.y + 3, x + swing, p.chime.y + 21, '#6a735a');
-      ctx.fillStyle = '#e4d4ad'; ctx.fillRect(Math.round(x + swing - 2), p.chime.y + 14, 5, 12);
-      line(ctx, x + swing, p.chime.y + 17, x + swing, p.chime.y + 22, '#ab8d64');
+      line(ctx, x, p.chime.y + 3, tailX, p.chime.y + 21, '#6a735a');
+      ctx.fillStyle = '#e4d4ad'; ctx.fillRect(tailX - 2, p.chime.y + 14, 5, 12);
+      line(ctx, tailX, p.chime.y + 17, tailX, p.chime.y + 22, '#ab8d64');
       const tx = this.width * 0.88;
+      const windPush = STEAM_CALM_DRIFT + gust(time) * STEAM_GUST_DRIFT + breeze(time, tx) * STEAM_WAVE;
       for (let i = 0; i < 5; i++) {
         const age = (time * 0.22 + i / 5) % 1;
+        const drift = age * (windPush + Math.sin(age * 8 + i) * STEAM_CURL);
         ctx.fillStyle = '#d4d6b8';
-        ctx.fillRect(Math.round(tx + Math.sin(age * 8 + i) * 2), Math.round(210 - age * 14), 1, 2);
+        ctx.fillRect(Math.round(tx + drift), Math.round(210 - age * 14), 1, 2);
       }
     }
   }
