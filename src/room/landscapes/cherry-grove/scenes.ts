@@ -2,7 +2,6 @@ import type { Chapter } from '../../journeys/route';
 
 export const DESIGN_HEIGHT = 270;
 export const GROUND_ROW = 164;
-export const GROUND_DEPTH = 0.75; // The ground, its props, and their click targets move together.
 export const SCENE_SECONDS = 210;
 export const DISSOLVE_SECONDS = 10;
 export const CHAPTERS: readonly Chapter[] = [

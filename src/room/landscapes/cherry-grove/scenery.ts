@@ -1,14 +1,34 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash, noise } from '../../journeys/noise';
+import { breeze } from '../../wind';
 import { DESIGN_HEIGHT, GROUND_ROW, SCENES, STONE_WINDOW_RISE, stoneX, waterSpan, type Scene } from './scenes';
 import { BARK, CREAM, INK, RED, ROOF, STONE, oval, rect, sprite, type Sprites } from './sprites';
 
 export interface Scenery {
   mountains: HTMLCanvasElement;
-  grove: HTMLCanvasElement;
+  distantTrees: readonly DistantTree[];
+  haze: HTMLCanvasElement;
   ground: HTMLCanvasElement;
+  groundPlants: readonly Plant[];
+  groundCover: HTMLCanvasElement;
   props: HTMLCanvasElement;
-  foreground: HTMLCanvasElement;
+  foregroundPlants: readonly Plant[];
+  plantAtlas: HTMLCanvasElement;
+}
+
+interface DistantTree {
+  image: HTMLCanvasElement;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface Plant {
+  x: number;
+  y: number;
+  variant: number;
+  sway: number;
 }
 
 const GRASS = ['#879b78', '#93a37b', '#a4ad87', '#748c70'];
@@ -26,6 +46,23 @@ const DRIFT_ANCHORS = [
 ];
 const WHEEL_U = 0.21;
 const WHEEL_ROW = 216;
+const DISTANT_CROWN_SWAY = 1; // Stage pixels at the distant tree canopy.
+const HAZE_PITCH = 4; // Repeat the two-pixel haze marks across the view.
+const HAZE_TOP = 148;
+const HAZE_BOTTOM = 170;
+const HAZE_ROW_STEP = 3;
+const HAZE_DRIFT = 0.45; // Stage pixels per second, with a pixel of wind deformation.
+const HAZE_DEFORMATION = 1;
+const FOREGROUND_SWAY = 2; // Stage pixels at the tips of the tall foreground grass.
+const GROUND_SWAY = 1; // The short grass and bank tufts bend less.
+const FOREGROUND_SPACING = 4;
+const FOREGROUND_MIN_RISE = 3;
+const FOREGROUND_MAX_RISE = 15;
+const PLANT_WIDTH = 11; // Leave clearance for the blossoms in the outermost poses.
+const PLANT_HEIGHT = 18; // Includes the three rows above the tallest blade's tip.
+const PLANT_CENTER = Math.floor(PLANT_WIDTH / 2);
+const BLOSSOM_VARIANT = FOREGROUND_MAX_RISE - FOREGROUND_MIN_RISE + 1;
+const GROUND_VARIANT = BLOSSOM_VARIANT * 2;
 
 function picture(width: number, paint: (ctx: CanvasRenderingContext2D) => void): HTMLCanvasElement {
   const { canvas, ctx } = memoryCanvas(width, DESIGN_HEIGHT);
@@ -57,16 +94,100 @@ function mountains(ctx: CanvasRenderingContext2D, width: number, scene: number):
   }
 }
 
-function grove(ctx: CanvasRenderingContext2D, width: number, index: number, assets: Sprites): void {
+function distantGrove(width: number, index: number, assets: Sprites): DistantTree[] {
   const count = Math.ceil(width / 23) + 2;
+  const trees: DistantTree[] = [];
   for (let i = 0; i < count; i++) {
-    const x = i * 23 - 10;
+    const center = i * 23 - 10;
     const y = 166 + noise(i * 0.7 + index) * 9;
-    sprite(ctx, assets.trees[i % assets.trees.length].image, x, y, 0.3 + hash(i + 9) * 0.16);
+    const scale = 0.3 + hash(i + 9) * 0.16;
+    const image = assets.trees[i % assets.trees.length].image;
+    const treeWidth = Math.round(image.width * scale);
+    const treeHeight = Math.round(image.height * scale);
+    trees.push({
+      image, x: Math.round(center - treeWidth / 2), y: Math.round(y - treeHeight), width: treeWidth, height: treeHeight,
+    });
   }
-  // Horizontal bands of haze soften the grove behind the clock.
-  for (let y = 148; y < 170; y += 3) {
-    for (let x = y % 4; x < width; x += 4) rect(ctx, '#c5b9bd', x, y, 2, 1);
+  return trees;
+}
+
+function hazeStrip(width: number): HTMLCanvasElement {
+  const { canvas, ctx } = memoryCanvas(width + HAZE_PITCH, 1);
+  for (let x = 0; x < canvas.width; x += HAZE_PITCH) rect(ctx, '#c5b9bd', x, 0, 2, 1);
+  return canvas;
+}
+
+export function drawDistantGrove(ctx: CanvasRenderingContext2D, art: Scenery, width: number, time: number): void {
+  for (const tree of art.distantTrees) {
+    const { image, x, y, width: treeWidth, height } = tree;
+    const sway = Math.round(breeze(time, x + treeWidth / 2) * DISTANT_CROWN_SWAY);
+    // Only the upper half of a distant tree moves a pixel. Its trunk stays planted.
+    const crownRows = Math.round(image.height / 2);
+    const crownHeight = Math.round(height / 2);
+    ctx.drawImage(image, 0, 0, image.width, crownRows, x + sway, y, treeWidth, crownHeight);
+    ctx.drawImage(image, 0, crownRows, image.width, image.height - crownRows,
+      x, y + crownHeight, treeWidth, height - crownHeight);
+  }
+  for (let y = HAZE_TOP; y < HAZE_BOTTOM; y += HAZE_ROW_STEP) {
+    const wave = breeze(time, y);
+    const phase = Math.round(y + time * HAZE_DRIFT + wave * HAZE_DEFORMATION) % HAZE_PITCH;
+    const start = (HAZE_PITCH - phase) % HAZE_PITCH;
+    ctx.drawImage(art.haze, start, 0, width, 1, 0, y + Math.round(wave * HAZE_DEFORMATION), width, 1);
+  }
+}
+
+function blade(ctx: CanvasRenderingContext2D, color: string, x: number, bottom: number, rise: number, width: number,
+  sway: number): void {
+  for (let row = 0; row < rise; row++) {
+    const bend = Math.round(sway * row / (rise - 1));
+    rect(ctx, color, x + bend, bottom - row - 1, width, 1);
+  }
+}
+
+function buildPlantAtlas(): HTMLCanvasElement {
+  const { canvas, ctx } = memoryCanvas(PLANT_WIDTH * (FOREGROUND_SWAY * 2 + 1),
+    PLANT_HEIGHT * (GROUND_VARIANT + MOSS.length));
+  for (let sway = -FOREGROUND_SWAY; sway <= FOREGROUND_SWAY; sway++) {
+    const x = (sway + FOREGROUND_SWAY) * PLANT_WIDTH + PLANT_CENTER;
+    for (let variant = 0; variant < GROUND_VARIANT; variant++) {
+      const rise = FOREGROUND_MIN_RISE + variant % BLOSSOM_VARIANT;
+      const bottom = (variant + 1) * PLANT_HEIGHT;
+      blade(ctx, '#4b6559', x, bottom, rise, 2, sway);
+      if (rise > FOREGROUND_MIN_RISE) {
+        const bend = Math.round(sway * (rise - 4) / (rise - 1));
+        rect(ctx, '#74896b', x + bend - 2, bottom - rise + 3, 3, 1);
+      }
+      if (variant >= BLOSSOM_VARIANT) {
+        oval(ctx, '#ddabc0', x + sway, bottom - rise - 1, 2, 2);
+        rect(ctx, CREAM, x + sway, bottom - rise - 1, 1, 1);
+      }
+    }
+    if (Math.abs(sway) > GROUND_SWAY) continue;
+    for (let i = 0; i < MOSS.length; i++) {
+      const bottom = (GROUND_VARIANT + i + 1) * PLANT_HEIGHT;
+      blade(ctx, MOSS[i], x, bottom, 4, 1, sway);
+      blade(ctx, MOSS[1], x + 2, bottom, 3, 1, sway);
+    }
+  }
+  return canvas;
+}
+
+function foregroundPlants(width: number, index: number): Plant[] {
+  const plants: Plant[] = [];
+  for (let x = 0; x < width; x += FOREGROUND_SPACING) {
+    if (x > width * 0.35 && x < width * 0.65) continue;
+    const rise = Math.round(FOREGROUND_MIN_RISE + hash(x + index) * (FOREGROUND_MAX_RISE - FOREGROUND_MIN_RISE));
+    const flower = x % (FOREGROUND_SPACING * 3) === 0 ? BLOSSOM_VARIANT : 0;
+    plants.push({ x, y: DESIGN_HEIGHT, variant: rise - FOREGROUND_MIN_RISE + flower, sway: FOREGROUND_SWAY });
+  }
+  return plants;
+}
+
+export function drawPlants(ctx: CanvasRenderingContext2D, plants: readonly Plant[], atlas: HTMLCanvasElement, time: number): void {
+  for (const plant of plants) {
+    const pose = Math.round(breeze(time, plant.x) * plant.sway) + FOREGROUND_SWAY;
+    ctx.drawImage(atlas, pose * PLANT_WIDTH, plant.variant * PLANT_HEIGHT, PLANT_WIDTH, PLANT_HEIGHT,
+      plant.x - PLANT_CENTER, plant.y - PLANT_HEIGHT, PLANT_WIDTH, PLANT_HEIGHT);
   }
 }
 
@@ -96,7 +217,7 @@ function petalDrifts(ctx: CanvasRenderingContext2D, width: number, scene: Scene,
   }
 }
 
-function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, index: number): void {
+function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, index: number, plants: Plant[]): void {
   const hasPath = scene.water !== 'pond';
   for (let y = GROUND_ROW; y < DESIGN_HEIGHT; y++) {
     rect(ctx, GRASS[Math.floor((y - GROUND_ROW) / 29) % GRASS.length], 0, y, width, 1);
@@ -128,11 +249,13 @@ function ground(ctx: CanvasRenderingContext2D, width: number, scene: Scene, inde
     else {
       rect(ctx, GRASS[i % GRASS.length], x, y, 2, 1);
       if (i % 8 === 0) {
-        rect(ctx, MOSS[i % MOSS.length], x, y - 3, 1, 4);
-        rect(ctx, MOSS[1], x + 2, y - 2, 1, 3);
+        plants.push({ x, y: y + 1, variant: GROUND_VARIANT + i % MOSS.length, sway: GROUND_SWAY });
       }
     }
   }
+}
+
+function groundCover(ctx: CanvasRenderingContext2D, width: number, scene: Scene, index: number): void {
   for (let i = 0; i < 23; i++) {
     const x = hash(i + 82 + index * 12) * width;
     const y = 182 + hash(i + 85) * 74;
@@ -297,11 +420,12 @@ function streamProps(ctx: CanvasRenderingContext2D, width: number, assets: Sprit
 }
 
 export function buildScenery(width: number, assets: Sprites): Scenery[] {
-  return SCENES.map((scene, index) => ({
-    mountains: picture(width, (ctx) => mountains(ctx, width, index)),
-    grove: picture(width, (ctx) => grove(ctx, width, index, assets)),
-    ground: picture(width, (ctx) => ground(ctx, width, scene, index)),
-    props: picture(width, (ctx) => {
+  const plantAtlas = buildPlantAtlas();
+  const haze = hazeStrip(width);
+  return SCENES.map((scene, index) => {
+    const groundPlants: Plant[] = [];
+    const groundArt = picture(width, (ctx) => ground(ctx, width, scene, index, groundPlants));
+    const props = picture(width, (ctx) => {
       if (index === 0) picnic(ctx, width * 0.245);
       if (index === 1) torii(ctx, width * 0.265, 192);
       if (index === 2) pagoda(ctx, width * 0.76, 207);
@@ -323,20 +447,19 @@ export function buildScenery(width: number, assets: Sprites): Scenery[] {
       }
       if (scene.bridge) bridge(ctx, scene.bridge.x * width, scene.bridge.y);
       for (const stone of scene.stones) stoneLantern(ctx, stoneX(scene, stone, width), stone.y);
-    }),
-    foreground: picture(width, (ctx) => {
-      for (let i = 0; i < width; i += 4) {
-        if (i > width * 0.35 && i < width * 0.65) continue;
-        const rise = 3 + hash(i + index) * 12;
-        rect(ctx, '#4b6559', i, DESIGN_HEIGHT - rise, 2, rise);
-        rect(ctx, '#74896b', i - 2, DESIGN_HEIGHT - rise + 3, 3, 1);
-        if (i % 12 === 0) {
-          oval(ctx, '#ddabc0', i, DESIGN_HEIGHT - rise - 1, 2, 2);
-          rect(ctx, CREAM, i, DESIGN_HEIGHT - rise - 1, 1, 1);
-        }
-      }
-    }),
-  }));
+    });
+    return {
+      mountains: picture(width, (ctx) => mountains(ctx, width, index)),
+      distantTrees: distantGrove(width, index, assets),
+      haze,
+      ground: groundArt,
+      groundPlants,
+      groundCover: picture(width, (ctx) => groundCover(ctx, width, scene, index)),
+      props,
+      foregroundPlants: foregroundPlants(width, index),
+      plantAtlas,
+    };
+  });
 }
 
 export function drawWheel(ctx: CanvasRenderingContext2D, width: number, time: number): void {

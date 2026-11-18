@@ -2,6 +2,7 @@ import { memoryCanvas } from '../../../render/pixel-stage';
 import type { RGB } from '../../../render/color';
 import { hash } from '../../journeys/noise';
 import { pixmap } from '../../journeys/pixmap';
+import { breeze } from '../../wind';
 import { DESIGN_HEIGHT, GROUND_ROW, SCENES, STONE_WINDOW_RISE, stoneX, waterSpan, type Scene } from './scenes';
 import { rect, sprite, type Sprites } from './sprites';
 
@@ -61,6 +62,9 @@ const PAPER_POOL_DROP = 61;
 const REFLECTION_RX = 62;
 const REFLECTION_Y = 108;
 const PAPER_CENTER_RISE = 7;
+const PAPER_SWAY = 2; // Stage pixels at the hanging lantern body.
+const PAPER_CORD_RISE = 22; // The cord starts above the lantern center.
+const PAPER_CORD_LENGTH = 17;
 const PAPER_HIT_RADIUS = 12;
 const STONE_HIT_HALF_WIDTH = 14;
 const STONE_HIT_RISE = 52;
@@ -215,7 +219,7 @@ export class GroveLighting {
     }
   }
 
-  prepare(chapter: number, time: number, night: number, gust: number): void {
+  prepare(chapter: number, time: number, night: number): void {
     this.active = this.layouts[chapter];
     this.spillStrength = 0.36 + night * 0.64;
     for (let i = 0; i < this.active.length; i++) {
@@ -227,7 +231,7 @@ export class GroveLighting {
       const flicker = 0.92 + Math.sin(time * FLICKER_RATE + phase) * 0.06 + Math.sin(time * 0.48 - phase) * 0.02;
       light.power = lit * flicker;
       light.bloom = Math.max(0, (timer - (LANTERN_SECONDS - BLOOM_SECONDS)) / BLOOM_SECONDS);
-      light.x = paper ? Math.round(light.anchorX + Math.sin(time * 0.5 + i) + gust * 0.15) : light.anchorX;
+      light.x = paper ? light.anchorX + Math.round(PAPER_SWAY * breeze(time, light.anchorX)) : light.anchorX;
     }
   }
 
@@ -273,7 +277,14 @@ export class GroveLighting {
       const paper = light.kind === 'paper';
       if (paper) {
         ctx.globalAlpha = 1;
-        rect(ctx, '#725761', light.x, light.y - 22, 1, 17);
+        const top = light.y - PAPER_CORD_RISE;
+        const sway = light.x - light.anchorX;
+        const steps = Math.abs(sway) + 1;
+        for (let step = 0; step < steps; step++) {
+          const first = Math.round(step * PAPER_CORD_LENGTH / steps);
+          const end = Math.round((step + 1) * PAPER_CORD_LENGTH / steps);
+          rect(ctx, '#725761', light.anchorX + Math.sign(sway) * step, top + first, 1, end - first);
+        }
         sprite(ctx, assets.lantern, light.x, light.y + PAPER_CENTER_RISE);
       }
       if (light.power <= MIN_LIGHT) continue;
