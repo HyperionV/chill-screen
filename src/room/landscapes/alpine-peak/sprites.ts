@@ -1,6 +1,7 @@
 import { mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { seededRandom } from '../../../world/math';
+import { breeze } from '../../wind';
 import {
   buildCreatureSprites,
   spriteBox,
@@ -21,7 +22,17 @@ export interface HutSprite extends SpriteBox {
   litWindow: SpriteBox;
 }
 
-export interface TentSprite extends SpriteBox {
+export interface SwayingPlant {
+  w: number;
+  h: number;
+  maxSway: number;
+  frames: HTMLCanvasElement[];
+}
+
+export interface TentSprite {
+  w: number;
+  h: number;
+  frames: HTMLCanvasElement[];
   glowDoor: SpriteBox;
 }
 
@@ -37,12 +48,12 @@ export interface AlpineSprites extends CreatureSprites {
   station: SpriteBox;
   terrace: SpriteBox;
   pylon: SpriteBox;
-  pinesFar: SpriteBox[];
-  pinesMid: SpriteBox[];
-  pinesFg: SpriteBox[];
+  pinesFar: SwayingPlant[];
+  pinesMid: SwayingPlant[];
+  pinesFg: SwayingPlant[];
   boulders: SpriteBox[];
-  shrubs: SpriteBox[];
-  grassTufts: SpriteBox[];
+  shrubs: SwayingPlant[];
+  grassTufts: SwayingPlant[];
   cairn: SpriteBox;
 }
 
@@ -151,9 +162,14 @@ function buildHut(): HutSprite {
   };
 }
 
-function buildTent(): TentSprite {
-  const w = 36;
-  const h = 22;
+// Fabric travel in stage pixels; the stakes, floor and door opening stay anchored.
+const TENT_WALL_SWAY = 2;
+const TENT_FLAG_SWAY = 2;
+const TENT_FLAG_LENGTH = 4;
+const TENT_MAST_X = 18;
+const TENT_MAST_Y = 1;
+
+function buildTentFrame(w: number, h: number, sway: number): HTMLCanvasElement {
   const { canvas, ctx } = memoryCanvas(w, h);
 
   ctx.fillStyle = '#3c465a';
@@ -166,7 +182,7 @@ function buildTent(): TentSprite {
   for (let y = 5; y < 20; y++) {
     const t = (y - 5) / 14;
     const half = Math.round(4 + Math.sin(t * Math.PI * 0.55) * 11);
-    const cx = 18;
+    const cx = TENT_MAST_X + Math.round(sway * (1 - t));
     ctx.fillStyle = '#c85e1a';
     ctx.fillRect(cx - half, y, half * 2, 1);
     ctx.fillStyle = '#f29834';
@@ -184,9 +200,17 @@ function buildTent(): TentSprite {
     ctx.fillRect(18 - half, y, half * 2, 1);
   }
   ctx.fillStyle = '#3e4658';
-  ctx.fillRect(18, 1, 1, 4);
-  ctx.fillStyle = '#e84a3c';
-  ctx.fillRect(19, 1, 4, 2);
+  ctx.fillRect(TENT_MAST_X, TENT_MAST_Y, 1, 4);
+  return canvas;
+}
+
+function buildTent(): TentSprite {
+  const w = 36;
+  const h = 22;
+  const frames: HTMLCanvasElement[] = [];
+  for (let sway = -TENT_WALL_SWAY; sway <= TENT_WALL_SWAY; sway++) {
+    frames.push(buildTentFrame(w, h, sway));
+  }
 
   const glow = memoryCanvas(14, 12);
   glow.ctx.fillStyle = 'rgba(255,196,92,0.28)';
@@ -197,7 +221,19 @@ function buildTent(): TentSprite {
     glow.ctx.fillRect(7 - half, y, half * 2, 1);
   }
 
-  return { canvas, w, h, glowDoor: spriteBox(glow.canvas) };
+  return { w, h, frames, glowDoor: spriteBox(glow.canvas) };
+}
+
+export function drawTent(ctx: CanvasRenderingContext2D, tent: TentSprite, x: number, y: number, time: number): void {
+  const mastX = x + TENT_MAST_X;
+  const wind = breeze(time, mastX);
+  const frame = TENT_WALL_SWAY + Math.round(wind * TENT_WALL_SWAY);
+  ctx.drawImage(tent.frames[frame], x, y);
+  ctx.fillStyle = '#e84a3c';
+  for (let i = 0; i < TENT_FLAG_LENGTH; i++) {
+    const lift = Math.round(wind * TENT_FLAG_SWAY * i / (TENT_FLAG_LENGTH - 1));
+    ctx.fillRect(mastX + 1 + i, y + TENT_MAST_Y + lift, 1, 2);
+  }
 }
 
 function buildGondola(): GondolaSprite {
@@ -357,7 +393,40 @@ function buildPylon(): SpriteBox {
   return spriteBox(canvas);
 }
 
-function buildPine(h: number, seed: number, haze: number): SpriteBox {
+// Maximum displacement goes at the tip, in stage pixels.
+const FAR_PINE_SWAY = 1;
+const MID_PINE_SWAY = 2;
+const FOREGROUND_PINE_SWAY = 3;
+const SHRUB_SWAY = 2;
+const GRASS_SWAY = 3;
+
+function buildPlantSway(base: SpriteBox, maxSway: number): SwayingPlant {
+  const { w, h } = base;
+  const frames: HTMLCanvasElement[] = [];
+  for (let sway = -maxSway; sway <= maxSway; sway++) {
+    const { canvas, ctx } = memoryCanvas(w + maxSway * 2, h);
+    for (let row = 0; row < h; row++) {
+      const height = (h - 1 - row) / (h - 1);
+      const bend = Math.round(sway * height * height);
+      ctx.drawImage(base.canvas, 0, row, w, 1, maxSway + bend, row, w, 1);
+    }
+    frames.push(canvas);
+  }
+  return { w, h, maxSway, frames };
+}
+
+export function drawSwayingPlant(
+  ctx: CanvasRenderingContext2D,
+  plant: SwayingPlant,
+  x: number,
+  y: number,
+  time: number,
+): void {
+  const sway = Math.round(breeze(time, x + plant.w / 2) * plant.maxSway);
+  ctx.drawImage(plant.frames[sway + plant.maxSway], x - plant.maxSway, y);
+}
+
+function buildPine(h: number, seed: number, haze: number, maxSway: number): SwayingPlant {
   const w = Math.max(9, Math.round(h * 0.56)) | 1;
   const { canvas, ctx } = memoryCanvas(w, h);
   const rnd = seededRandom(seed);
@@ -393,7 +462,7 @@ function buildPine(h: number, seed: number, haze: number): SpriteBox {
       ctx.fillRect(x, y, 1, 1);
     }
   }
-  return spriteBox(canvas);
+  return buildPlantSway(spriteBox(canvas), maxSway);
 }
 
 function buildBoulder(w: number, h: number, seed: number): SpriteBox {
@@ -429,7 +498,7 @@ function buildBoulder(w: number, h: number, seed: number): SpriteBox {
   return spriteBox(canvas);
 }
 
-function buildShrub(w: number, h: number, seed: number): SpriteBox {
+function buildShrub(w: number, h: number, seed: number): SwayingPlant {
   const { canvas, ctx } = memoryCanvas(w, h);
   const rnd = seededRandom(seed);
   const cx = w / 2;
@@ -451,10 +520,10 @@ function buildShrub(w: number, h: number, seed: number): SpriteBox {
       ctx.fillRect(x, y, 1, 1);
     }
   }
-  return spriteBox(canvas);
+  return buildPlantSway(spriteBox(canvas), SHRUB_SWAY);
 }
 
-function buildGrassTuft(w: number, h: number, seed: number): SpriteBox {
+function buildGrassTuft(w: number, h: number, seed: number): SwayingPlant {
   const { canvas, ctx } = memoryCanvas(w, h);
   const rnd = seededRandom(seed);
   const blades = 4 + Math.floor(rnd() * 3);
@@ -473,7 +542,7 @@ function buildGrassTuft(w: number, h: number, seed: number): SpriteBox {
   // Small snow fleck tucked at the base of the tuft.
   ctx.fillStyle = '#dce8fa';
   ctx.fillRect(Math.max(0, baseX - 2), h - 1, 4, 1);
-  return spriteBox(canvas);
+  return buildPlantSway(spriteBox(canvas), GRASS_SWAY);
 }
 
 function buildCairn(): SpriteBox {
@@ -505,9 +574,17 @@ export function buildAlpineSprites(): AlpineSprites {
     station: buildStation(),
     terrace: buildTerrace(),
     pylon: buildPylon(),
-    pinesFar: [buildPine(20, 101, 0.38), buildPine(25, 102, 0.38), buildPine(22, 103, 0.38)],
-    pinesMid: [buildPine(32, 201, 0.16), buildPine(38, 202, 0.16), buildPine(29, 203, 0.16)],
-    pinesFg: [buildPine(64, 301, 0), buildPine(74, 302, 0)],
+    pinesFar: [
+      buildPine(20, 101, 0.38, FAR_PINE_SWAY),
+      buildPine(25, 102, 0.38, FAR_PINE_SWAY),
+      buildPine(22, 103, 0.38, FAR_PINE_SWAY),
+    ],
+    pinesMid: [
+      buildPine(32, 201, 0.16, MID_PINE_SWAY),
+      buildPine(38, 202, 0.16, MID_PINE_SWAY),
+      buildPine(29, 203, 0.16, MID_PINE_SWAY),
+    ],
+    pinesFg: [buildPine(64, 301, 0, FOREGROUND_PINE_SWAY), buildPine(74, 302, 0, FOREGROUND_PINE_SWAY)],
     boulders: [
       buildBoulder(30, 18, 401),
       buildBoulder(38, 22, 402),

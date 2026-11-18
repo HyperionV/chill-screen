@@ -2,7 +2,6 @@ import { css, mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hourNow } from '../../../scene/clock';
 import type { Look } from '../../../wallpapers/look';
-import { approach } from '../../../world/math';
 import { ChapterTitle } from '../../journeys/chapter-title';
 import { Route } from '../../journeys/route';
 import type { NightSky } from '../../night-sky';
@@ -19,13 +18,11 @@ import {
   alpenglowStrength,
   sceneTerrainY,
 } from './scenes';
-import { buildAlpineSprites, type AlpineSprites } from './sprites';
+import { buildAlpineSprites, drawTent, type AlpineSprites } from './sprites';
 import { drawFarRange, drawForegroundGround, drawMainTerrain, drawMidRange } from './terrain';
 
 const DESIGN_ROWS = 270;
 const ROUTE_KEY = 'landscape-alpine-peak';
-const MAX_PARALLAX_X = 4.2;
-const MAX_PARALLAX_Y = 2.0;
 
 const luma = (c: RGB): number => (0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]) / 255;
 
@@ -37,8 +34,6 @@ export class AlpinePeakView implements OutsideView {
   private w = 0;
   private h = 0;
   private unit = 1;
-  private parX = 0;
-  private parY = 0;
 
   private readonly route = new Route(ROUTE_KEY, CHAPTERS);
   private readonly title = new ChapterTitle();
@@ -80,7 +75,7 @@ export class AlpinePeakView implements OutsideView {
     const { index: scene } = this.route.now;
 
     if (this.cast.tryClickIbex(x, y, this.unit)) {
-      const pos = this.cast.ibexPosition(scene, this.w, this.h, this.parX, this.parY);
+      const pos = this.cast.ibexPosition(scene, this.w, this.h);
       this.interactions.spawnLeapDust(pos.x, pos.y, this.unit);
       return;
     }
@@ -103,12 +98,7 @@ export class AlpinePeakView implements OutsideView {
     const glow = alpenglowStrength(hour);
     this.updateLook(state, glow);
 
-    const targetParX = frame.pointer ? ((frame.pointer.x / this.w) - 0.5) * -2 * MAX_PARALLAX_X * this.unit : 0;
-    const targetParY = frame.pointer ? ((frame.pointer.y / this.h) - 0.5) * -2 * MAX_PARALLAX_Y * this.unit : 0;
-    this.parX = approach(this.parX, targetParX, 3.2, dt);
-    this.parY = approach(this.parY, targetParY, 3.2, dt);
-
-    this.interactions.update(dt, frame.time, now.index, this.w, this.h, this.unit, frame.pointer);
+    this.interactions.update(dt, frame.time, now.index, this.w, this.h, this.unit);
     this.cast.update(dt, frame.time, now.index, this.w, this.h, this.unit, frame.pointer);
 
     // 1. Sky dome + Milky Way / extra stars / shooting star + soaring eagle in upper third.
@@ -144,7 +134,7 @@ export class AlpinePeakView implements OutsideView {
 
     ctx.drawImage(this.land.canvas, 0, 0);
 
-    // 3. Post-tint warm glows (lit hut window, tent lantern, cable car interior, chimney smoke rings).
+    // 3. Post-tint warm glows (lit hut window, tent doorway, cable car interior, chimney smoke rings).
     this.drawPostTint(ctx, now.index, state.day, 1 - blend, this.sprites);
     if (blend > 0.05) {
       this.drawPostTint(ctx, now.next, state.day, blend, this.sprites);
@@ -178,58 +168,36 @@ export class AlpinePeakView implements OutsideView {
   ): void {
     const sunRight = state.sun.up > -0.02 ? state.sun.u >= 0.5 : hour >= 12;
 
-    drawFarRange(L, 1, scene, this.w, this.h, this.unit, this.parX, this.parY, state, glow, sunRight);
-    this.interactions.drawCloudSea(L, scene, 0, this.w, this.h, this.unit, hour, state, this.parX * 0.5, this.parY * 0.5);
-    drawFarRange(L, 2, scene, this.w, this.h, this.unit, this.parX, this.parY, state, glow, sunRight);
-    drawMidRange(L, scene, this.w, this.h, this.unit, this.parX, this.parY, state, glow, sunRight);
+    drawFarRange(L, 1, scene, this.w, this.h, this.unit, state, glow, sunRight);
+    this.interactions.drawCloudSea(L, scene, 0, this.w, this.h, this.unit, hour, state, time);
+    drawFarRange(L, 2, scene, this.w, this.h, this.unit, state, glow, sunRight);
+    drawMidRange(L, scene, this.w, this.h, this.unit, state, glow, sunRight);
 
-    drawMainTerrain(L, scene, this.w, this.h, this.unit, time, this.parX, this.parY, state, glow, sunRight, sprites);
-    this.drawLandmarks(L, scene, sprites);
-    this.cast.drawSceneCast(
-      L,
-      scene,
-      this.w,
-      this.h,
-      this.unit,
-      time,
-      this.parX,
-      this.parY,
-      sprites,
-      this.interactions.wind,
-    );
-    this.interactions.drawLandEffects(
-      L,
-      scene,
-      this.w,
-      this.h,
-      this.unit,
-      time,
-      state,
-      this.parX,
-      this.parY,
-      sprites.hut,
-    );
+    drawMainTerrain(L, scene, this.w, this.h, this.unit, time, state, glow, sunRight, sprites);
+    this.drawLandmarks(L, scene, time, sprites);
+    this.cast.drawSceneCast(L, scene, this.w, this.h, this.unit, time, sprites);
+    this.interactions.drawLandEffects(L, scene, this.w, this.h, this.unit, time, state, sprites.hut);
 
-    this.interactions.drawCloudSea(L, scene, 1, this.w, this.h, this.unit, hour, state, this.parX * 1.1, this.parY * 1.1);
-    drawForegroundGround(L, scene, this.w, this.h, this.unit, this.parX, this.parY, state, glow, sprites);
+    this.interactions.drawCloudSea(L, scene, 1, this.w, this.h, this.unit, hour, state, time);
+    drawForegroundGround(L, scene, this.w, this.h, this.unit, time, state, glow, sprites);
   }
 
-  private drawLandmarks(L: CanvasRenderingContext2D, scene: number, sprites: AlpineSprites): void {
+  private drawLandmarks(L: CanvasRenderingContext2D, scene: number, time: number, sprites: AlpineSprites): void {
     if (scene === 1) {
-      const hx = Math.round(SCENE_ANCHORS.glacierHut.u * this.w - sprites.hut.w / 2 + this.parX);
-      const hy = Math.round(SCENE_ANCHORS.glacierHut.v * this.h - sprites.hut.h + 4 + this.parY);
+      const hx = Math.round(SCENE_ANCHORS.glacierHut.u * this.w - sprites.hut.w / 2);
+      const hy = Math.round(SCENE_ANCHORS.glacierHut.v * this.h - sprites.hut.h + 4);
       L.drawImage(sprites.hut.canvas, hx, hy);
     } else if (scene === 4) {
-      const hx = Math.round(SCENE_ANCHORS.starryHut.u * this.w - sprites.hut.w / 2 + this.parX);
-      const hy = Math.round(SCENE_ANCHORS.starryHut.v * this.h - sprites.hut.h + 4 + this.parY);
+      const hx = Math.round(SCENE_ANCHORS.starryHut.u * this.w - sprites.hut.w / 2);
+      const hy = Math.round(SCENE_ANCHORS.starryHut.v * this.h - sprites.hut.h + 4);
       L.drawImage(sprites.hut.canvas, hx, hy);
 
-      const tx = Math.round(SCENE_ANCHORS.starryTent.u * this.w - sprites.tent.w / 2 + this.parX);
-      const ty = Math.round(SCENE_ANCHORS.starryTent.v * this.h - sprites.tent.h + 4 + this.parY);
-      L.drawImage(sprites.tent.canvas, tx, ty);
+      const tx = Math.round(SCENE_ANCHORS.starryTent.u * this.w - sprites.tent.w / 2);
+      const ty = Math.round(SCENE_ANCHORS.starryTent.v * this.h - sprites.tent.h + 4);
+      drawTent(L, sprites.tent, tx, ty, time);
 
-      const cx = Math.round(this.w * 0.34 - sprites.cairn.w / 2 + this.parX);
-      const cy = Math.round(sceneTerrainY(4, 0.34) * this.h - sprites.cairn.h + 4 + this.parY);
+      const cx = Math.round(this.w * 0.34 - sprites.cairn.w / 2);
+      const cy = Math.round(sceneTerrainY(4, 0.34) * this.h - sprites.cairn.h + 4);
       L.drawImage(sprites.cairn.canvas, cx, cy);
     }
   }
@@ -250,8 +218,6 @@ export class AlpinePeakView implements OutsideView {
       this.w,
       this.h,
       day,
-      this.parX,
-      this.parY,
       sprites.hut,
       sprites.tent.glowDoor,
     );

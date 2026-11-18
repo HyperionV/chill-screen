@@ -1,5 +1,6 @@
 import { clamp, lerp, rand } from '../../../world/math';
 import type { ViewFrame } from '../../view';
+import { breeze } from '../../wind';
 import { CableCarSystem } from './cable-car';
 import { SCENE_ANCHORS, glacierProfile, sceneTerrainY } from './scenes';
 import type { AlpineSprites, DirectedSprite, SpriteBox } from './sprites';
@@ -51,6 +52,9 @@ const IBEX_LEAP_HEIGHT = 12;
 const IBEX_HIT_PAD = 10;
 const EAGLE_HIT_PAD = 12;
 const MARMOT_SHY_RADIUS = 28;
+// The scarf knot stays on the climber sprite.
+const SCARF_TAIL_LENGTH = 5;
+const SCARF_TIP_SWAY = 2;
 
 function pickDirected(sp: DirectedSprite, dir: 1 | -1): SpriteBox {
   return dir >= 0 ? sp.right : sp.left;
@@ -163,7 +167,7 @@ export class AlpineCast {
   }
 
   /** Current screen anchor of the recurring ibex for dust-fleck effects or inspection. */
-  ibexPosition(scene: number, w: number, h: number, parX: number, parY: number): { x: number; y: number } {
+  ibexPosition(scene: number, w: number, h: number): { x: number; y: number } {
     let baseV = sceneTerrainY(scene, this.ibex.u);
     if (scene === 1) {
       const g = glacierProfile(this.ibex.u);
@@ -174,8 +178,8 @@ export class AlpineCast {
       baseV = SCENE_ANCHORS.starryHut.v + 0.025;
     }
     return {
-      x: Math.round(this.ibex.u * w + parX),
-      y: Math.round(baseV * h + parY),
+      x: Math.round(this.ibex.u * w),
+      y: Math.round(baseV * h),
     };
   }
 
@@ -214,22 +218,19 @@ export class AlpineCast {
     h: number,
     unit: number,
     time: number,
-    parX: number,
-    parY: number,
     sprites: AlpineSprites,
-    windDir: number,
   ): void {
     if (scene === 0) {
-      this.drawSummitClimber(L, w, h, time, parX, parY, sprites, windDir);
+      this.drawSummitClimber(L, w, h, time, sprites);
     } else if (scene === 1) {
-      this.drawMarmots(L, w, h, time, parX, parY, sprites);
+      this.drawMarmots(L, w, h, time, sprites);
     } else if (scene === 2) {
-      this.drawRopedClimbers(L, w, h, unit, parX, parY, sprites);
+      this.drawRopedClimbers(L, w, h, unit, sprites);
     } else if (scene === 3) {
-      this.cableCar.draw(L, w, h, unit, time, parX, parY, sprites);
+      this.cableCar.draw(L, w, h, unit, time, sprites);
     }
 
-    this.drawIbex(L, scene, w, h, unit, parX, parY, sprites);
+    this.drawIbex(L, scene, w, h, unit, sprites);
   }
 
   /** Draws glowing cable car windows post-tint at dusk and night in Cable Car Col. */
@@ -312,11 +313,9 @@ export class AlpineCast {
     w: number,
     h: number,
     unit: number,
-    parX: number,
-    parY: number,
     sprites: AlpineSprites,
   ): void {
-    const pos = this.ibexPosition(scene, w, h, parX, parY);
+    const pos = this.ibexPosition(scene, w, h);
     this.lastIbexPos = pos;
 
     let lift = 0;
@@ -346,13 +345,10 @@ export class AlpineCast {
     w: number,
     h: number,
     time: number,
-    parX: number,
-    parY: number,
     sprites: AlpineSprites,
-    windDir: number,
   ): void {
-    const cx = Math.round(SCENE_ANCHORS.summitClimber.u * w + parX);
-    const cy = Math.round(sceneTerrainY(0, SCENE_ANCHORS.summitClimber.u) * h + parY) + 1;
+    const cx = Math.round(SCENE_ANCHORS.summitClimber.u * w);
+    const cy = Math.round(sceneTerrainY(0, SCENE_ANCHORS.summitClimber.u) * h) + 1;
     const sp = sprites.climberPlant;
     const x = Math.round(cx - sp.w / 2);
     const y = Math.round(cy - sp.h + 2);
@@ -361,11 +357,12 @@ export class AlpineCast {
     L.drawImage(sp.canvas, x, y);
 
     const scarfY = y + 4;
-    const dir = windDir >= 0 ? 1 : -1;
-    const flap = Math.round(Math.sin(time * 5.2) * 1);
+    const scarfX = cx + 3;
+    const sway = breeze(time, scarfX) * SCARF_TIP_SWAY;
     L.fillStyle = '#66d0d8';
-    L.fillRect(cx + dir * 4, scarfY, dir * 4, 1);
-    L.fillRect(cx + dir * 6, scarfY + flap, dir * 3, 1);
+    for (let i = 1; i <= SCARF_TAIL_LENGTH; i++) {
+      L.fillRect(scarfX + i, scarfY + Math.round(sway * (i - 1) / (SCARF_TAIL_LENGTH - 1)), 1, 1);
+    }
 
     if (this.summitMood === 'plant') {
       const reach = Math.round(Math.sin(time * 3.5) * 1.5);
@@ -416,13 +413,11 @@ export class AlpineCast {
     w: number,
     h: number,
     time: number,
-    parX: number,
-    parY: number,
     sprites: AlpineSprites,
   ): void {
     for (const m of this.marmots) {
-      const mx = Math.round(m.u * w + parX);
-      const my = Math.round(m.vOffset * h + parY);
+      const mx = Math.round(m.u * w);
+      const my = Math.round(m.vOffset * h);
 
       L.fillStyle = '#4e566a';
       L.fillRect(mx - 10, my - 2, 20, 6);
@@ -473,17 +468,15 @@ export class AlpineCast {
     w: number,
     h: number,
     unit: number,
-    parX: number,
-    parY: number,
     sprites: AlpineSprites,
   ): void {
     const team = this.ropeTeam;
     const leadU = team.u;
     const followU = clamp(team.u - team.dir * 0.055, 0.08, 0.4);
-    const lx = Math.round(leadU * w + parX);
-    const ly = Math.round(sceneTerrainY(2, leadU) * h + parY) + 2;
-    const fx = Math.round(followU * w + parX);
-    const fy = Math.round(sceneTerrainY(2, followU) * h + parY) + 2;
+    const lx = Math.round(leadU * w);
+    const ly = Math.round(sceneTerrainY(2, leadU) * h) + 2;
+    const fx = Math.round(followU * w);
+    const fy = Math.round(sceneTerrainY(2, followU) * h) + 2;
 
     const stepA = team.mood !== 'walk' || Math.floor(team.stepClock * 3.5) % 2 === 0;
     const leadImg = pickDirected(stepA ? sprites.climberLeadA : sprites.climberLeadB, team.dir);

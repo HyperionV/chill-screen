@@ -13,7 +13,7 @@ import {
   midRidgeY,
   sceneTerrainY,
 } from './scenes';
-import type { AlpineSprites, SpriteBox } from './sprites';
+import { drawSwayingPlant, type AlpineSprites } from './sprites';
 
 interface PropPlacement {
   u: number;
@@ -97,8 +97,6 @@ export function drawFarRange(
   w: number,
   h: number,
   unit: number,
-  parX: number,
-  parY: number,
   state: SkyState,
   glow: number,
   sunRight: boolean,
@@ -120,15 +118,13 @@ export function drawFarRange(
   const shadeStyle = css(shadeRgb);
   const rimStyle = css(rimRgb);
 
-  const px = parX * (layer === 1 ? 0.24 : 0.42);
-  const py = parY * (layer === 1 ? 0.24 : 0.42);
   const fn = layer === 1 ? far1RidgeY : far2RidgeY;
   const maxBot = Math.round(h * 0.84);
 
   for (let x = 0; x < w; x++) {
-    const u = clamp((x - px) / w, 0, 1);
+    const u = x / w;
     const yV = fn(scene, u);
-    const top = Math.round(yV * h + py);
+    const top = Math.round(yV * h);
     if (top >= maxBot) continue;
 
     const slope = fn(scene, clamp(u + 0.014, 0, 1)) - fn(scene, clamp(u - 0.014, 0, 1));
@@ -150,8 +146,6 @@ export function drawMidRange(
   w: number,
   h: number,
   unit: number,
-  parX: number,
-  parY: number,
   state: SkyState,
   glow: number,
   sunRight: boolean,
@@ -162,13 +156,11 @@ export function drawMidRange(
   const snowLit = css(mix(mix(ALPINE_COLORS.snowLit, state.sky.horizon, 0.16), alpenglowWarm, 0.72 * glow));
   const snowShade = css(mix(mix(ALPINE_COLORS.snowShade, state.sky.horizon, 0.2), ALPINE_COLORS.alpenglowShadow, 0.78 * glow));
 
-  const px = parX * 0.62;
-  const py = parY * 0.62;
   const maxBot = Math.round(h * 0.86);
 
   for (let x = 0; x < w; x++) {
-    const u = clamp((x - px) / w, 0, 1);
-    const top = Math.round(midRidgeY(scene, u) * h + py);
+    const u = x / w;
+    const top = Math.round(midRidgeY(scene, u) * h);
     if (top >= maxBot) continue;
 
     const slope = midMacroY(scene, clamp(u + 0.016, 0, 1)) - midMacroY(scene, clamp(u - 0.016, 0, 1));
@@ -191,8 +183,6 @@ export function drawMainTerrain(
   h: number,
   unit: number,
   time: number,
-  parX: number,
-  parY: number,
   state: SkyState,
   glow: number,
   sunRight: boolean,
@@ -212,9 +202,9 @@ export function drawMainTerrain(
   const valleyCol = css(mix(ALPINE_COLORS.pineValley, state.sky.horizon, 0.2));
 
   for (let x = 0; x < w; x++) {
-    const u = clamp((x - parX) / w, 0, 1);
+    const u = x / w;
     const ridgeV = sceneTerrainY(scene, u);
-    const top = Math.round(ridgeV * h + parY);
+    const top = Math.round(ridgeV * h);
     const macroSlope = macroTerrainY(scene, clamp(u + 0.015, 0, 1)) - macroTerrainY(scene, clamp(u - 0.015, 0, 1));
     const ribShift = (hash(Math.floor(u * 26) + scene * 19) - 0.5) * 0.008;
     const litFace = sunRight ? macroSlope + ribShift > 0 : macroSlope + ribShift < 0;
@@ -295,9 +285,9 @@ export function drawMainTerrain(
   }
 
   if (scene === 1) {
-    drawGlacierAndStream(L, w, h, unit, time, parX, parY, glow);
+    drawGlacierAndStream(L, w, h, unit, time, glow);
   } else if (scene === 3) {
-    drawPineValley(L, w, h, parX, parY, sprites);
+    drawPineValley(L, w, h, time, sprites);
   }
 }
 
@@ -308,14 +298,11 @@ export function drawForegroundGround(
   w: number,
   h: number,
   unit: number,
-  parX: number,
-  parY: number,
+  time: number,
   state: SkyState,
   glow: number,
   sprites: AlpineSprites,
 ): void {
-  const px = parX * 1.32;
-  const py = parY * 1.32;
   const alpenglowWarm = mix(ALPINE_COLORS.alpenglowOrange, ALPINE_COLORS.alpenglowPink, 0.45);
   const fgSnowLit = css(mix(ALPINE_COLORS.snowLit, alpenglowWarm, 0.42 * glow));
   const fgSnowShade = css(mix(mix(ALPINE_COLORS.snowShade, state.sky.horizon, 0.14), ALPINE_COLORS.alpenglowShadow, 0.72 * glow));
@@ -325,7 +312,7 @@ export function drawForegroundGround(
 
   // Sculpted foreground snow & scree banks on bottom-left (u 0..0.38) and bottom-right (u 0.63..1.0).
   for (let x = 0; x < w; x++) {
-    const u = clamp((x - px) / w, 0, 1);
+    const u = x / w;
     const inRadioZone = u >= 0.385 && u <= 0.625;
     if (inRadioZone) continue;
 
@@ -333,7 +320,7 @@ export function drawForegroundGround(
     const inStream = scene === 1 && u >= 0.09 && u <= 0.21;
     const sideT = u < 0.385 ? clamp((0.385 - u) / 0.385, 0, 1) : clamp((u - 0.625) / 0.375, 0, 1);
     const bankRise = Math.pow(sideT, 0.85) * 0.08 + (noise(u * 18 + scene * 9) - 0.5) * 0.018;
-    const bankTop = Math.round((0.96 - bankRise) * h + py);
+    const bankTop = Math.round((0.96 - bankRise) * h);
 
     if (!inStream && bankTop < h) {
       L.fillStyle = fgSnowLit;
@@ -352,7 +339,7 @@ export function drawForegroundGround(
     if (!inStream) {
       const pebbleHash = hash(x * 0.63 + scene * 31);
       if (pebbleHash > 0.72) {
-        const pyOff = Math.round((0.81 + hash(x * 1.13 + scene) * 0.15) * h + py);
+        const pyOff = Math.round((0.81 + hash(x * 1.13 + scene) * 0.15) * h);
         if (pyOff < h - 1) {
           L.fillStyle = pebbleHash > 0.88 ? screeDark : screeMid;
           L.fillRect(x, pyOff, pebbleHash > 0.86 ? 3 : 2, pebbleHash > 0.91 ? 2 : 1);
@@ -362,26 +349,27 @@ export function drawForegroundGround(
   }
 
   // Crisp footprints in the lower-third snow left & right of the radio.
-  drawFootprints(L, scene, w, h, unit, px, py, fgSnowDeep, fgSnowLit);
+  drawFootprints(L, scene, w, h, unit, fgSnowDeep, fgSnowLit);
 
   // Foreground rocks, snow-tufted shrubs, and grass tufts.
   const props = FOREGROUND_PROPS[scene] ?? FOREGROUND_PROPS[0];
   for (const p of props) {
-    let sp: SpriteBox;
-    if (p.kind === 'boulder') sp = sprites.boulders[p.variant % sprites.boulders.length];
-    else if (p.kind === 'shrub') sp = sprites.shrubs[p.variant % sprites.shrubs.length];
-    else sp = sprites.grassTufts[p.variant % sprites.grassTufts.length];
+    if (p.kind === 'boulder') {
+      const sp = sprites.boulders[p.variant % sprites.boulders.length];
+      L.drawImage(sp.canvas, Math.round(p.u * w - sp.w / 2), Math.round(p.v * h - sp.h));
+      continue;
+    }
 
-    const dx = Math.round(p.u * w - sp.w / 2 + px);
-    const dy = Math.round(p.v * h - sp.h + py);
-    L.drawImage(sp.canvas, dx, dy);
+    const plants = p.kind === 'shrub' ? sprites.shrubs : sprites.grassTufts;
+    const sp = plants[p.variant % plants.length];
+    drawSwayingPlant(L, sp, Math.round(p.u * w - sp.w / 2), Math.round(p.v * h - sp.h), time);
   }
 
   if (scene === 1 || scene === 3) {
     const pL = sprites.pinesFg[0];
     const pR = sprites.pinesFg[1];
-    L.drawImage(pL.canvas, Math.round(-pL.w * 0.25 + px), Math.round(h - pL.h + 6 + py));
-    L.drawImage(pR.canvas, Math.round(w - pR.w * 0.72 + px), Math.round(h - pR.h + 8 + py));
+    drawSwayingPlant(L, pL, Math.round(-pL.w * 0.25), Math.round(h - pL.h + 6), time);
+    drawSwayingPlant(L, pR, Math.round(w - pR.w * 0.72), Math.round(h - pR.h + 8), time);
   }
 }
 
@@ -391,8 +379,6 @@ function drawFootprints(
   w: number,
   h: number,
   unit: number,
-  px: number,
-  py: number,
   stepCol: string,
   rimCol: string,
 ): void {
@@ -400,8 +386,8 @@ function drawFootprints(
     for (let i = 0; i < steps; i++) {
       const t = i / Math.max(1, steps - 1);
       const stagger = (i % 2 === 0 ? -1 : 1) * 1.5 * unit;
-      const sx = Math.round(lerp(u0, u1, t) * w + px + stagger);
-      const sy = Math.round((lerp(v0, v1, t) - Math.sin(Math.PI * t) * 0.014) * h + py);
+      const sx = Math.round(lerp(u0, u1, t) * w + stagger);
+      const sy = Math.round((lerp(v0, v1, t) - Math.sin(Math.PI * t) * 0.014) * h);
       L.fillStyle = stepCol;
       L.fillRect(sx, sy, 2, 1);
       L.fillStyle = rimCol;
@@ -430,8 +416,6 @@ function drawGlacierAndStream(
   h: number,
   unit: number,
   time: number,
-  px: number,
-  py: number,
   glow: number,
 ): void {
   const alpenglowWarm = mix(ALPINE_COLORS.alpenglowOrange, ALPINE_COLORS.alpenglowPink, 0.4);
@@ -441,10 +425,10 @@ function drawGlacierAndStream(
   const crev = css(ALPINE_COLORS.crevasse);
 
   for (let x = Math.round(w * 0.08); x < Math.round(w * 0.88); x++) {
-    const u = clamp((x - px) / w, 0, 1);
+    const u = x / w;
     const g = glacierProfile(u);
-    const top = Math.round(g.topV * h + py);
-    const bot = Math.round(g.botV * h + py);
+    const top = Math.round(g.topV * h);
+    const bot = Math.round(g.botV * h);
     const span = Math.max(2, bot - top);
 
     L.fillStyle = iceLit;
@@ -461,8 +445,8 @@ function drawGlacierAndStream(
     }
   }
 
-  const snoutX = Math.round(SCENE_ANCHORS.glacierStreamSnout.u * w + px);
-  const snoutY = Math.round(SCENE_ANCHORS.glacierStreamSnout.v * h + py);
+  const snoutX = Math.round(SCENE_ANCHORS.glacierStreamSnout.u * w);
+  const snoutY = Math.round(SCENE_ANCHORS.glacierStreamSnout.v * h);
   L.fillStyle = crev;
   L.fillRect(snoutX - 4, snoutY - 3, 8, 5);
 
@@ -471,7 +455,7 @@ function drawGlacierAndStream(
   const steps = Math.round(h * 0.22);
   for (let i = 0; i < steps; i++) {
     const t = i / steps;
-    const sx = Math.round(lerp(snoutX, w * 0.12 + px, t) + Math.sin(t * 7.5) * 8 * unit);
+    const sx = Math.round(lerp(snoutX, w * 0.12, t) + Math.sin(t * 7.5) * 8 * unit);
     const sy = snoutY + i;
     const halfW = Math.round((2 + t * 5.5) * unit);
     L.fillStyle = streamDeep;
@@ -487,20 +471,19 @@ function drawPineValley(
   L: CanvasRenderingContext2D,
   w: number,
   h: number,
-  px: number,
-  py: number,
+  time: number,
   sprites: AlpineSprites,
 ): void {
   for (let i = 0; i < 16; i++) {
     const u = 0.16 + (i / 15) * 0.54 + (hash(i * 23 + 1) - 0.5) * 0.02;
     const v = sceneTerrainY(3, u) + 0.015 + hash(i * 23 + 2) * 0.05;
     const sp = sprites.pinesFar[i % sprites.pinesFar.length];
-    L.drawImage(sp.canvas, Math.round(u * w - sp.w / 2 + px * 0.8), Math.round(v * h - sp.h + py * 0.8));
+    drawSwayingPlant(L, sp, Math.round(u * w - sp.w / 2), Math.round(v * h - sp.h), time);
   }
   for (let i = 0; i < 14; i++) {
     const u = 0.14 + (i / 13) * 0.56 + (hash(i * 31 + 5) - 0.5) * 0.02;
     const v = sceneTerrainY(3, u) + 0.065 + hash(i * 31 + 6) * 0.05;
     const sp = sprites.pinesMid[i % sprites.pinesMid.length];
-    L.drawImage(sp.canvas, Math.round(u * w - sp.w / 2 + px), Math.round(v * h - sp.h + py));
+    drawSwayingPlant(L, sp, Math.round(u * w - sp.w / 2), Math.round(v * h - sp.h), time);
   }
 }

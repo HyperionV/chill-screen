@@ -1,9 +1,8 @@
 import { mix, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
-import { approach, clamp, seededRandom } from '../../../world/math';
+import { clamp, seededRandom } from '../../../world/math';
 import { hash } from '../../journeys/noise';
 import type { SkyState } from '../../sky';
-import type { ViewFrame } from '../../view';
 import { ALPINE_COLORS, alpenglowStrength, cloudSeaBaseY } from './scenes';
 
 interface CloudBillow {
@@ -13,14 +12,19 @@ interface CloudBillow {
   scale: number;
   vJitter: number;
   speed: number;
-  partX: number;
-  partY: number;
-  partAlpha: number;
 }
 
 const MAX_CLOUDS = 30;
 const SPRITE_COUNT = 5;
-const CLOUD_PART_RADIUS = 56;
+// Shape changes are measured in stage pixels and eased over several seconds.
+const BILLOW_WIDTH_CHANGE = 3;
+const BILLOW_HEIGHT_CHANGE = 2;
+const BILLOW_FREQUENCY = 0.48;
+const BILLOW_PHASE_STEP = 1.7;
+// The mist edge stays continuous as its dither passes across the valley.
+const MIST_DRIFT_SPEED = 1.5;
+const MIST_DITHER_PERIOD = 128;
+const MIST_EDGE_SWELL = 1;
 
 const BAYER_4X4: readonly number[] = [
   0, 8, 2, 10,
@@ -103,11 +107,12 @@ function buildCloudBankSprite(
   return canvas;
 }
 
-/** Multi-layered valley cloud sea with soft dithered cloud tops that drifts and parts near the pointer. */
+/** Multi-layered valley cloud sea with soft dithered cloud tops. */
 export class CloudSea {
   private readonly clouds: CloudBillow[] = [];
   private sprites: HTMLCanvasElement[] = [];
   private spriteKey = '';
+  private mistTravel = 0;
 
   constructor() {
     for (let i = 0; i < MAX_CLOUDS; i++) {
@@ -121,38 +126,16 @@ export class CloudSea {
         scale: (layer === 0 ? 0.85 : 1.05) + hash(i * 17 + 1) * 0.35,
         vJitter: (hash(i * 17 + 2) - 0.5) * (layer === 0 ? 6 : 8),
         speed: (layer === 0 ? 0.0032 : 0.0058) * (0.8 + hash(i * 17 + 3) * 0.45),
-        partX: 0,
-        partY: 0,
-        partAlpha: 0,
       });
     }
   }
 
-  /** Updates horizontal cloud drift and smooth parting away from the active pointer. */
-  update(dt: number, scene: number, w: number, h: number, unit: number, pointer: ViewFrame['pointer']): void {
-    const partRad = CLOUD_PART_RADIUS * unit;
+  update(dt: number, strength: number): void {
+    const speedScale = 0.65 + 0.85 * strength;
+    this.mistTravel = (this.mistTravel + MIST_DRIFT_SPEED * speedScale * dt) % MIST_DITHER_PERIOD;
     for (const c of this.clouds) {
-      c.u += c.speed * dt;
+      c.u += c.speed * speedScale * dt;
       if (c.u > 1.18) c.u -= 1.36;
-      const cx = c.u * w;
-      const cy = cloudSeaBaseY(scene, c.layer) * h + c.vJitter * unit;
-      let tx = 0;
-      let ty = 0;
-      let ta = 0;
-      if (pointer) {
-        const dx = cx - pointer.x;
-        const dy = cy - pointer.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist < partRad && dist > 0.1) {
-          const push = (1 - dist / partRad) ** 1.4;
-          tx = (dx / dist) * 20 * unit * push;
-          ty = Math.max(0, dy / dist) * 5 * unit * push + 2 * unit * push;
-          ta = 0.45 * push;
-        }
-      }
-      c.partX = approach(c.partX, tx, 7, dt);
-      c.partY = approach(c.partY, ty, 7, dt);
-      c.partAlpha = approach(c.partAlpha, ta, 7, dt);
     }
   }
 
@@ -166,10 +149,10 @@ export class CloudSea {
     unit: number,
     hour: number,
     state: SkyState,
-    parX: number,
-    parY: number,
+    time: number,
+    strength: number,
   ): void {
-    const baseY = cloudSeaBaseY(scene, layer) * h + parY;
+    const baseY = cloudSeaBaseY(scene, layer) * h;
     const day = state.day;
     const glow = alpenglowStrength(hour);
 
@@ -199,32 +182,34 @@ export class CloudSea {
 
     // Distant layer 0 includes a continuous soft dithered mist deck across the valley basin.
     if (layer === 0) {
-      const deckY = Math.round(baseY + 2 * unit);
+      const edgeSwell = Math.round(Math.sin(time * BILLOW_FREQUENCY + scene) * MIST_EDGE_SWELL * strength);
+      const deckY = Math.round(baseY + 2 * unit) + edgeSwell;
       const deckH = Math.round((scene === 1 ? 26 : 56) * unit);
+      const ditherTravel = Math.round(this.mistTravel);
       L.fillStyle = `rgb(${shadeRgb[0] | 0},${shadeRgb[1] | 0},${shadeRgb[2] | 0})`;
       L.fillRect(0, deckY, w, deckH);
       L.fillStyle = `rgb(${litRgb[0] | 0},${litRgb[1] | 0},${litRgb[2] | 0})`;
-      for (let x = 0; x < w; x += 2) {
-        if (hash(x * 0.7 + scene * 13) > 0.38) {
+      for (let x = ditherTravel % 2 - 2; x < w; x += 2) {
+        const patternX = (x - ditherTravel) & (MIST_DITHER_PERIOD - 1);
+        if (hash(patternX * 0.7 + scene * 13) > 0.38) {
           L.fillRect(x, deckY - 1, 2, 2);
         }
       }
     }
 
     L.save();
+    L.globalAlpha = layer === 0 ? 0.88 : scene === 1 ? 0.68 : 0.92;
     for (const c of this.clouds) {
       if (c.layer !== layer) continue;
       const sp = this.sprites[c.sprite];
       if (!sp) continue;
-      const cw = Math.round(sp.width * c.scale);
-      const ch = Math.round(sp.height * c.scale);
-      const cx = Math.round(c.u * w + c.partX + parX * (layer === 0 ? 0.5 : 0.92));
-      const cy = Math.round(baseY + c.vJitter * unit + c.partY);
+      const swell = Math.sin(time * BILLOW_FREQUENCY + c.vJitter * BILLOW_PHASE_STEP) * (0.5 + 0.5 * strength);
+      const cw = Math.round(sp.width * c.scale + swell * BILLOW_WIDTH_CHANGE);
+      const ch = Math.round(sp.height * c.scale - swell * BILLOW_HEIGHT_CHANGE);
+      const cx = Math.round(c.u * w);
+      const cy = Math.round(baseY + c.vJitter * unit);
       if (cx + cw * 0.6 < 0 || cx - cw * 0.6 > w) continue;
 
-      const alpha = (layer === 0 ? 0.88 : scene === 1 ? 0.68 : 0.92) * (1 - c.partAlpha);
-      if (alpha <= 0.04) continue;
-      L.globalAlpha = alpha;
       L.drawImage(sp, Math.round(cx - cw * 0.5), Math.round(cy - ch * 0.58), cw, ch);
     }
     L.restore();
