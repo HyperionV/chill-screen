@@ -1,21 +1,34 @@
 import { hash } from '../../journeys/noise';
 import type { ViewFrame } from '../../view';
+import { breeze, gust } from '../../wind';
 import type { GardenInteractions } from './interactions';
-import { layout } from './scenes';
+import { DESIGN_HEIGHT, layout } from './scenes';
 import { line, oval, sprite, type GardenSprites } from './sprites';
 
 const KOI_COUNT = 7;
-const LEAF_COUNT = 9;
+const MAPLE_LEAF_COUNT = 9;
+const BREEZE_LEAF_COUNT = 5;
 const FIREFLY_COUNT = 15;
 const MONK_REST_SECONDS = 8;
+/** Wind-blown leaf motion parameters in stage pixels per second. */
+const LEAF_FALL_BASE = 2.5;
+const LEAF_FALL_RANGE = 2;
+const LEAF_DRIFT_CALM = 4;
+const LEAF_DRIFT_GUST = 12;
+const LEAF_FLUTTER = 5;
+const LEAF_FALL_FLUTTER = 0.6;
+// Allow the three-pixel leaf sprite to clear the image before recycling it.
+const LEAF_EXIT_PAD = 6;
 type MonkActivity = 'rest' | 'work' | 'look';
 type CatActivity = 'sleep' | 'look' | 'stretch' | 'walk';
 type HeronActivity = 'away' | 'arrive' | 'watch' | 'step' | 'leave';
 interface Koi { x: number; y: number; tx: number; ty: number; wait: number; facing: number; seed: number }
+interface WindLeaf { x: number; y: number; fall: number; seed: number }
 
 export class GardenCast {
   private width = 0;
   private readonly fish: Koi[] = [];
+  private readonly leaves: WindLeaf[] = [];
   private monkActivity: MonkActivity = 'rest';
   private monkAge = 0;
   private monkRound = 0;
@@ -37,6 +50,15 @@ export class GardenCast {
       const x = width * (0.30 + hash(i + 2) * 0.38);
       const y = 193 + hash(i + 4) * 25;
       this.fish.push({ x, y, tx: x, ty: y, wait: i, facing: 1, seed: i });
+    }
+    this.leaves.length = 0;
+    for (let i = 0; i < MAPLE_LEAF_COUNT; i++) {
+      this.leaves.push({
+        x: 15 + hash(i + 16) * width * 0.24 + hash(i + 51) * width * 0.35,
+        y: 28 + hash(i + 27) * 210,
+        fall: LEAF_FALL_BASE + hash(i) * LEAF_FALL_RANGE,
+        seed: i,
+      });
     }
   }
 
@@ -101,6 +123,23 @@ export class GardenCast {
       }
       if ((pointer && Math.hypot(pointer.x - this.heronX, pointer.y - 190) < 28) || this.heronX > this.width * 0.25) {
         if (this.heronActivity === 'watch' || this.heronActivity === 'step') { this.heronActivity = 'leave'; this.heronAge = 0; }
+      }
+    }
+    const wind = LEAF_DRIFT_CALM + gust(frame.time) * LEAF_DRIFT_GUST;
+    for (let i = 0; i < this.leaves.length; i++) {
+      const leaf = this.leaves[i];
+      const flutter = breeze(frame.time, leaf.x + leaf.seed * 19);
+      leaf.x += (wind + flutter * LEAF_FLUTTER) * dt;
+      leaf.y += (leaf.fall + Math.abs(flutter) * LEAF_FALL_FLUTTER) * dt;
+      if (leaf.x > this.width + LEAF_EXIT_PAD || leaf.y > DESIGN_HEIGHT + LEAF_EXIT_PAD) {
+        leaf.seed += MAPLE_LEAF_COUNT;
+        if (scene === 0 || scene === 4) {
+          leaf.x = 12 + hash(leaf.seed + 16) * this.width * 0.24;
+          leaf.y = 22 + hash(leaf.seed + 27) * 32;
+        } else {
+          leaf.x = -4 - hash(leaf.seed + 16) * 24;
+          leaf.y = 32 + hash(leaf.seed + 27) * 145;
+        }
       }
     }
     if (scene === 3) {
@@ -184,13 +223,22 @@ export class GardenCast {
 
   drawAir(ctx: CanvasRenderingContext2D, scene: number, time: number, night: number, pointer: ViewFrame['pointer']): void {
     if (scene === 0 || scene === 4) {
-      for (let i = 0; i < LEAF_COUNT; i++) {
-        const fall = (time * (1.2 + hash(i) * 0.9) + i * 27) % 230;
-        const x = 15 + hash(i + 16) * this.width * 0.24 + Math.sin(fall / 26 + i) * 13;
-        const y = 28 + fall;
+      for (let i = 0; i < MAPLE_LEAF_COUNT; i++) {
+        const leaf = this.leaves[i];
+        const x = Math.round(leaf.x);
+        const y = Math.round(leaf.y);
         ctx.fillStyle = i % 2 ? '#bd7248' : '#9d593d';
-        ctx.fillRect(Math.round(x), Math.round(y), 3, 1);
-        ctx.fillRect(Math.round(x + 1), Math.round(y - 1), 1, 3);
+        ctx.fillRect(x, y, 3, 1);
+        ctx.fillRect(x + 1, y - 1, 1, 3);
+      }
+    } else {
+      for (let i = 0; i < BREEZE_LEAF_COUNT; i++) {
+        const leaf = this.leaves[i];
+        const x = Math.round(leaf.x);
+        const y = Math.round(leaf.y);
+        ctx.fillStyle = i % 2 ? '#718952' : '#9ca970';
+        ctx.fillRect(x, y, 2, 1);
+        ctx.fillRect(x + 1, y + 1, 1, 1);
       }
     }
     if (night < 0.3) return;
