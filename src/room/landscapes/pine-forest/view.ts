@@ -7,18 +7,19 @@ import { ramp } from '../../journeys/noise';
 import type { NightSky } from '../../night-sky';
 import { SkyDome, type SkyState } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
+import { ForestAir } from './air';
 import { Creatures } from './creatures';
+import { ForestFloor } from './floor';
 import { Interactions } from './interactions';
-import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, SCENE_SECONDS, hutX } from './scenes';
+import { ForestLights } from './lighting';
+import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, SCENE_SECONDS } from './scenes';
 import { Scenery } from './scenery';
 import { buildCast, type CastSprites } from './sprites';
 
 const HORIZON = 0.65;
-const PARALLAX_X = 6;
-const PARALLAX_Y = 2;
-const RETURN_RATE = 2.4;
 const MAX_DT = 0.1;
-const NIGHT_TINT = 'rgba(12,26,57,0.60)';
+// Keep blue-green detail in the shadows after the night grade.
+const NIGHT_TINT = 'rgba(28,52,67,0.36)';
 
 /** A stationary woodland, revisited from five nearby places. */
 export class PineForest implements OutsideView {
@@ -26,8 +27,6 @@ export class PineForest implements OutsideView {
   private h = 0;
   private width = 0;
   private unit = 1;
-  private px = 0;
-  private py = 0;
   private activeScene = 0;
   private readonly pointer = { x: 0, y: 0 };
   private readonly route = new Route('landscape-pine-forest', CHAPTERS);
@@ -38,6 +37,9 @@ export class PineForest implements OutsideView {
   private readonly outgoing = memoryCanvas(1, 1);
   private readonly incoming = memoryCanvas(1, 1);
   private readonly scenery = new Scenery();
+  private readonly floor = new ForestFloor();
+  private readonly air = new ForestAir();
+  private readonly lights = new ForestLights();
   private readonly creatures = new Creatures();
   private readonly interactions = new Interactions();
   private sprites: CastSprites | null = null;
@@ -53,7 +55,12 @@ export class PineForest implements OutsideView {
     this.h = Math.max(0, Math.round(h));
     if (!this.w || !this.h) return;
     this.unit = this.h / DESIGN_HEIGHT;
-    this.width = Math.ceil(this.w / this.unit);
+    const width = Math.ceil(this.w / this.unit);
+    if (width !== this.width) {
+      this.width = width;
+      this.scenery.resize(width);
+      this.floor.resize(width, this.scenery.patches);
+    }
     this.dome.resize(this.w, this.h);
     this.sky.canvas.width = this.w; this.sky.canvas.height = this.h;
     for (const target of [this.land, this.outgoing, this.incoming]) {
@@ -61,18 +68,16 @@ export class PineForest implements OutsideView {
       target.canvas.height = DESIGN_HEIGHT;
       target.ctx.imageSmoothingEnabled = false;
     }
-    this.sprites = buildCast();
-    this.scenery.resize(this.width);
+    this.sprites ??= buildCast();
     this.creatures.resize(this.width);
     this.interactions.reset();
-    this.px = 0; this.py = 0;
     this.activeScene = this.route.now.index;
   }
 
   press(x: number, y: number): void {
     if (!this.w || !this.h || !this.sprites) return;
     this.interactions.press(x / this.unit, y / this.unit, this.width, this.activeScene,
-      this.scenery.trees(this.activeScene), this.px, this.py, this.creatures);
+      this.scenery.trees(this.activeScene), this.creatures);
   }
 
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look {
@@ -88,21 +93,17 @@ export class PineForest implements OutsideView {
       this.pointer.y = frame.pointer.y / this.unit;
     }
     const pointer = frame.pointer ? this.pointer : null;
-    const targetX = pointer ? (pointer.x / this.width - 0.5) * PARALLAX_X : 0;
-    const targetY = pointer ? (pointer.y / DESIGN_HEIGHT - 0.5) * PARALLAX_Y : 0;
-    const easing = Math.min(1, dt * RETURN_RATE);
-    this.px += (targetX - this.px) * easing;
-    this.py += (targetY - this.py) * easing;
     const state = this.dome.stateAt(hourNow());
     this.updateLook(state);
     this.sky.ctx.clearRect(0, 0, this.w, this.h);
     this.dome.draw(this.sky.ctx, state, frame, this.look);
-    this.interactions.update(dt);
-    this.creatures.update(now.index, dt, frame.time, pointer, this.px);
-    this.paint(this.outgoing.ctx, now.index, frame.time, state, pointer);
+    this.air.advance(dt, frame.time);
+    this.interactions.update(dt, frame.time);
+    this.creatures.update(now.index, dt, frame.time, pointer);
+    this.paint(this.outgoing.ctx, now.index, frame.time, state);
     if (blend > 0) {
-      this.creatures.update(now.next, dt, frame.time, pointer, this.px, false);
-      this.paint(this.incoming.ctx, now.next, frame.time, state, pointer);
+      this.creatures.update(now.next, dt, frame.time, pointer, false);
+      this.paint(this.incoming.ctx, now.next, frame.time, state);
     }
     ctx.save();
     ctx.imageSmoothingEnabled = false;
@@ -116,30 +117,28 @@ export class PineForest implements OutsideView {
     return this.look;
   }
 
-  private paint(c: CanvasRenderingContext2D, scene: number, time: number, state: SkyState,
-    pointer: { x: number; y: number } | null): void {
+  private paint(c: CanvasRenderingContext2D, scene: number, time: number, state: SkyState): void {
     const sprites = this.sprites;
     if (!sprites) return;
     const l = this.land.ctx;
+    const night = 1 - state.day;
     l.clearRect(0, 0, this.width, DESIGN_HEIGHT);
-    this.scenery.drawBack(l, scene, this.px, this.py, time, state);
-    this.creatures.draw(l, scene, sprites, time, this.px, this.py);
-    this.scenery.mist(l, scene, time, pointer);
-    this.scenery.drawFront(l, scene, this.px, this.py, time, pointer?.x ?? null);
-    this.interactions.draw(l, scene, this.width, sprites, this.px);
+    this.scenery.drawBack(l, scene);
+    this.air.drawLight(l, scene, time, state);
+    this.air.drawMist(l, scene, time, night);
+    this.scenery.drawProps(l, scene, time);
+    this.air.drawSmoke(l, scene, time, night);
+    this.lights.draw(l, scene, this.width, time, night, this.scenery.patches);
+    this.creatures.draw(l, scene, sprites, time);
+    this.scenery.drawPines(l, scene, time);
+    this.floor.draw(l, scene, time);
+    this.air.drawSeeds(l, scene, time);
+    this.interactions.draw(l, scene, this.width, sprites);
     this.tint(l, state);
     c.clearRect(0, 0, this.width, DESIGN_HEIGHT);
     c.drawImage(this.sky.canvas, 0, 0, this.width, DESIGN_HEIGHT);
     c.drawImage(this.land.canvas, 0, 0);
-    this.creatures.glow(c, scene, time, 1 - state.day);
-    if (scene === 4) {
-      const x = Math.round(hutX(this.width) + 88 + this.px);
-      const strength = 0.25 + (1 - state.day) * 0.75;
-      c.fillStyle = `rgba(247,205,120,${strength * 0.13})`;
-      c.fillRect(x - 6, 165, 13, 17);
-      c.fillStyle = `rgba(255,222,143,${strength})`;
-      c.fillRect(x - 2, 170, 4, 6);
-    }
+    this.creatures.glow(c, scene, time, night, this.lights);
   }
 
   private tint(c: CanvasRenderingContext2D, state: SkyState): void {
@@ -160,9 +159,9 @@ export class PineForest implements OutsideView {
     const { day, sky, sun } = state;
     const tint = this.look.tint;
     // The room receives mostly forest light, with a little open sky above it.
-    tint[0] = 28 + day * 41 + sky.horizon[0] * 0.07;
-    tint[1] = 43 + day * 59 + sky.horizon[1] * 0.09;
-    tint[2] = 64 + day * 25 + sky.horizon[2] * 0.08;
+    tint[0] = 40 + day * 35 + sky.horizon[0] * 0.07;
+    tint[1] = 58 + day * 47 + sky.horizon[1] * 0.09;
+    tint[2] = 68 + day * 22 + sky.horizon[2] * 0.08;
     this.look.mean = (0.2126 * tint[0] + 0.7152 * tint[1] + 0.0722 * tint[2]) / 255;
     this.look.night = 1 - day;
     this.look.sun = sun.up > -0.02 ? { u: sun.u, v: sun.v, strength: 0.38, color: sky.light } : null;
