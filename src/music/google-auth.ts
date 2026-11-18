@@ -92,7 +92,7 @@ export class GoogleAuth {
   }
 
   signOut(): void {
-    if (this.token) google.accounts.oauth2.revoke(this.token.value);
+    if (this.token && typeof google !== 'undefined') google.accounts.oauth2.revoke(this.token.value);
     this.expire();
     writeJson(SIGNED_IN_KEY, false);
     void endSession();
@@ -125,8 +125,10 @@ export class GoogleAuth {
 
   private async getTokenClient(): Promise<google.accounts.oauth2.TokenClient> {
     if (this.implicitClient) return this.implicitClient;
+    // Wait for the Google script before touching `google`: a call's target is looked up before its arguments run.
+    const clientId = await this.requireClientId();
     this.implicitClient = google.accounts.oauth2.initTokenClient({
-      client_id: await this.requireClientId(),
+      client_id: clientId,
       scope: SCOPE,
       callback: (r) => this.settle(r),
       error_callback: (e) => this.failPopup(e),
@@ -136,8 +138,10 @@ export class GoogleAuth {
 
   private async getCodeClient(): Promise<google.accounts.oauth2.CodeClient> {
     if (this.codeClient) return this.codeClient;
+    // Wait for the Google script before touching `google`: a call's target is looked up before its arguments run.
+    const clientId = await this.requireClientId();
     this.codeClient = google.accounts.oauth2.initCodeClient({
-      client_id: await this.requireClientId(),
+      client_id: clientId,
       scope: SCOPE,
       ux_mode: 'popup',
       callback: (r) => void this.settleCode(r),
