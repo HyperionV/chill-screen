@@ -16,6 +16,21 @@ declare namespace google.accounts.oauth2 {
     callback: (response: TokenResponse) => void;
     error_callback?: (error: { type: string; message?: string }) => void;
   }): TokenClient;
+  interface CodeResponse {
+    code?: string;
+    error?: string;
+    error_description?: string;
+  }
+  interface CodeClient {
+    requestCode(): void;
+  }
+  function initCodeClient(config: {
+    client_id: string;
+    scope: string;
+    ux_mode: 'popup';
+    callback: (response: CodeResponse) => void;
+    error_callback?: (error: { type: string; message?: string }) => void;
+  }): CodeClient;
   function revoke(token: string, done?: () => void): void;
 }
 
