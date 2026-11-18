@@ -3,7 +3,7 @@ import { seededRandom } from '../../../world/math';
 import { PixelGrid, ditherIndex, hash2, type Sprite } from './sprites-base';
 
 export interface WorldSprites {
-  giant: Sprite;
+  giant: [calm: Sprite, windward: Sprite, leeward: Sprite];
   ringsBack: Sprite;
   ringsFront: Sprite;
   ringsShimmer: Sprite;
@@ -52,17 +52,15 @@ const ROCK_PALETTE: readonly RGB[] = [
   [176, 164, 154],
 ];
 
-function buildGasGiant(unit: number): {
-  giant: Sprite;
-  ringsBack: Sprite;
-  ringsFront: Sprite;
-  ringsShimmer: Sprite;
-} {
-  const r = Math.max(24, Math.round(50 * unit));
+/** Atmospheric bands and the storm can travel this many stage pixels across the giant. */
+const GIANT_CLOUD_DRIFT = 3;
+
+function buildGiantBody(r: number, cloudDrift: number): Sprite {
   const size = r * 2 + 2;
   const cx = r + 1;
   const cy = r + 1;
   const px = new PixelGrid(size, size);
+  const driftScale = cloudDrift / r;
 
   // Light comes from upper-left (-0.65, -0.58, 0.49).
   for (let y = 0; y < size; y++) {
@@ -75,14 +73,27 @@ function buildGasGiant(unit: number): {
       const ndotl = Math.max(0, -dx * 0.65 - dy * 0.58 + nz * 0.49);
       // Slight 14-degree axial tilt for atmospheric bands and subtle storm oval.
       const lat = dy * 0.96 - dx * 0.28;
-      const band = Math.sin(lat * 15) * 0.5 + Math.cos(lat * 7 + 0.8) * 0.35 + Math.sin(lat * 29) * 0.15;
-      const storm = Math.hypot((dx + 0.22) * 1.4, (lat - 0.28) * 3.1) < 0.24 ? 0.18 : 0;
+      // Foreshorten cloud motion toward the limb while keeping the planet's shading fixed.
+      const drift = driftScale * nz;
+      const cloudLat = lat + drift * Math.sin(dx * Math.PI);
+      const band = Math.sin(cloudLat * 15) * 0.5 + Math.cos(cloudLat * 7 + 0.8) * 0.35 + Math.sin(cloudLat * 29) * 0.15;
+      const storm = Math.hypot((dx + 0.22 - drift) * 1.4, (cloudLat - 0.28) * 3.1) < 0.24 ? 0.18 : 0;
       const shade01 = Math.min(1, Math.max(0, ndotl * 0.78 + (band * 0.14 + 0.12) + storm));
       let idx = ditherIndex(x, y, shade01, GIANT_PALETTE.length);
       if (r2 > 0.92 && ndotl > 0.55) idx = GIANT_PALETTE.length - 1;
       px.set(x, y, GIANT_PALETTE[idx]);
     }
   }
+  return px.toSprite();
+}
+
+function buildGasGiant(unit: number): {
+  giant: WorldSprites['giant'];
+  ringsBack: Sprite;
+  ringsFront: Sprite;
+  ringsShimmer: Sprite;
+} {
+  const r = Math.max(24, Math.round(50 * unit));
 
   // Tilted elliptical rings split cleanly into back half, front half, and shimmer overlay.
   const rw = Math.round(r * 2.15) * 2 + 4;
@@ -124,7 +135,7 @@ function buildGasGiant(unit: number): {
   }
 
   return {
-    giant: px.toSprite(),
+    giant: [buildGiantBody(r, 0), buildGiantBody(r, -GIANT_CLOUD_DRIFT), buildGiantBody(r, GIANT_CLOUD_DRIFT)],
     ringsBack: back.toSprite(),
     ringsFront: front.toSprite(),
     ringsShimmer: shimmer.toSprite(),
