@@ -8,16 +8,16 @@ import { Route } from '../../journeys/route';
 import type { NightSky } from '../../night-sky';
 import { SkyDome, type SkyState } from '../../sky';
 import type { OutsideView, ViewFrame } from '../../view';
+import { breeze } from '../../wind';
 import { GroveInteractions } from './interactions';
 import { GroveLife } from './life';
-import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, GROUND_DEPTH, SCENES, SCENE_SECONDS, type Point } from './scenes';
-import { buildScenery, drawWheel, type Scenery } from './scenery';
+import { CHAPTERS, DESIGN_HEIGHT, DISSOLVE_SECONDS, SCENES, SCENE_SECONDS, type Point } from './scenes';
+import { buildScenery, drawDistantGrove, drawPlants, drawWheel, type Scenery } from './scenery';
 import { buildSprites, type Sprites } from './sprites';
 
 const HORIZON = 0.65;
-const PARALLAX_X = 3;
-const PARALLAX_Y = 1.5;
 const SWAY_STRIP = 5;
+const TREE_TIP_SWAY = 3; // Stage pixels for a full-size cherry crown.
 const NIGHT_SHADE = 0.53;
 const SUNSET_SHADE = 0.17;
 const GROVE_LIGHT: RGB = [181, 161, 173];
@@ -32,8 +32,6 @@ export class CherryGrove implements OutsideView {
   private height = 0;
   private designWidth = 1;
   private unit = 1;
-  private parallaxX = 0;
-  private parallaxY = 0;
   private activeChapter = 0;
   private readonly route = new Route('landscape-cherry-grove', CHAPTERS);
   private readonly title = new ChapterTitle();
@@ -71,13 +69,11 @@ export class CherryGrove implements OutsideView {
     this.assets ??= buildSprites();
     this.scenery = buildScenery(this.designWidth, this.assets);
     this.interactions.resize(this.designWidth);
-    this.parallaxX = 0;
-    this.parallaxY = 0;
   }
 
   press(x: number, y: number): void {
     if (!this.assets || this.width === 0 || this.height === 0) return;
-    this.interactions.press(x * this.designWidth / this.width, y / this.unit, this.activeChapter, this.parallaxX, this.parallaxY, this.life);
+    this.interactions.press(x * this.designWidth / this.width, y / this.unit, this.activeChapter, this.life);
   }
 
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look {
@@ -93,10 +89,6 @@ export class CherryGrove implements OutsideView {
       this.pointer.y = frame.pointer.y / this.unit;
       pointer = this.pointer;
     }
-    const targetX = pointer ? (pointer.x / this.designWidth - 0.5) * PARALLAX_X * 2 : 0;
-    const targetY = pointer ? (pointer.y / DESIGN_HEIGHT - 0.5) * PARALLAX_Y * 2 : 0;
-    this.parallaxX += (targetX - this.parallaxX) * Math.min(1, dt * 3);
-    this.parallaxY += (targetY - this.parallaxY) * Math.min(1, dt * 3);
     this.interactions.update(dt, frame.time, pointer);
     this.life.update(dt, frame.time, this.designWidth, this.activeChapter, pointer);
     const state = this.dome.stateAt(hourNow());
@@ -127,33 +119,21 @@ export class CherryGrove implements OutsideView {
     this.look.sun = sun.up > -0.02 ? { u: sun.u, v: sun.v, strength: 0.65, color: sky.light } : null;
   }
 
-  private layer(ctx: CanvasRenderingContext2D, image: HTMLCanvasElement, depth: number, time: number): void {
-    const x = Math.round(this.parallaxX * depth + Math.sin(time * 0.14) * depth * 0.4);
-    const y = Math.round(this.parallaxY * depth);
-    ctx.drawImage(image, x, y);
-    // Repeat the edge pixels so parallax never opens a seam at the sides.
-    if (x > 0) ctx.drawImage(image, 0, 0, 1, DESIGN_HEIGHT, 0, y, x, DESIGN_HEIGHT);
-    if (x < 0) ctx.drawImage(image, image.width - 1, 0, 1, DESIGN_HEIGHT, image.width + x, y, -x, DESIGN_HEIGHT);
-    if (y < 0) ctx.drawImage(image, 0, DESIGN_HEIGHT - 1, image.width, 1, x, DESIGN_HEIGHT + y, image.width, -y);
-  }
-
   private render(ctx: CanvasRenderingContext2D, chapter: number, state: SkyState, time: number, assets: Sprites): void {
     const scene = SCENES[chapter];
     const art = this.scenery[chapter];
     const land = this.land.ctx;
     const night = 1 - state.day;
     const lighting = this.interactions.lighting;
-    const groundX = Math.round(this.parallaxX * GROUND_DEPTH);
-    const groundY = Math.round(this.parallaxY * GROUND_DEPTH);
-    lighting.prepare(chapter, time, night, this.interactions.gust);
+    lighting.prepare(chapter, time, night);
     ctx.clearRect(0, 0, this.designWidth, DESIGN_HEIGHT);
     ctx.drawImage(this.sky.canvas, 0, 0, this.designWidth, DESIGN_HEIGHT);
     land.clearRect(0, 0, this.designWidth, DESIGN_HEIGHT);
-    this.layer(land, art.mountains, 0.18, time);
-    this.layer(land, art.grove, 0.4, time);
-    this.layer(land, art.ground, GROUND_DEPTH, 0);
-    land.save();
-    land.translate(groundX, groundY);
+    land.drawImage(art.mountains, 0, 0);
+    drawDistantGrove(land, art, this.designWidth, time);
+    land.drawImage(art.ground, 0, 0);
+    drawPlants(land, art.groundPlants, art.plantAtlas, time);
+    land.drawImage(art.groundCover, 0, 0);
     if (chapter === 1) this.life.drawFish(land, this.designWidth, time);
     this.interactions.drawWater(land, scene, chapter, time);
     lighting.drawWater(land, time);
@@ -161,15 +141,15 @@ export class CherryGrove implements OutsideView {
     if (chapter === 3) drawWheel(land, this.designWidth, time);
     if (chapter === 0) this.life.drawPerson(land, this.designWidth, assets);
     this.life.drawCat(land, scene, this.designWidth, assets, time);
-    land.restore();
     const moonlight = night * (0.68 + Math.max(0, state.moon.up) * 0.32);
     for (const tree of scene.trees) {
       const { image, moonRim } = assets.trees[tree.variant];
       const width = Math.round(image.width * tree.size);
       const height = Math.round(image.height * tree.size);
-      const x = Math.round(tree.u * this.designWidth - width / 2 + this.parallaxX);
-      const y = Math.round(tree.y - height + this.parallaxY);
-      const bend = Math.sin(time * 0.55 + tree.u * 8) * 1.2 + this.interactions.gust * 0.34 + this.interactions.gustY * 0.1;
+      const center = tree.u * this.designWidth;
+      const x = Math.round(center - width / 2);
+      const y = Math.round(tree.y) - height;
+      const bend = breeze(time, center) * TREE_TIP_SWAY * Math.min(1, tree.size);
       const rim = moonlight * (tree.u > CLOCK_LEFT && tree.u < CLOCK_RIGHT ? 0.4 : 1);
       for (let row = 0; row < image.height; row += SWAY_STRIP) {
         const rows = Math.min(SWAY_STRIP, image.height - row);
@@ -184,7 +164,7 @@ export class CherryGrove implements OutsideView {
         }
       }
     }
-    this.layer(land, art.foreground, 1.3, time);
+    drawPlants(land, art.foregroundPlants, art.plantAtlas, time);
     land.save();
     land.globalCompositeOperation = 'source-atop';
     land.fillStyle = css(NIGHT_LIGHT, night * NIGHT_SHADE);
@@ -193,17 +173,11 @@ export class CherryGrove implements OutsideView {
     land.fillStyle = css(mix(DUSK_ROSE, state.sky.light, 0.45), rose * SUNSET_SHADE);
     land.fillRect(0, 0, this.designWidth, DESIGN_HEIGHT);
     land.restore();
-    land.save();
-    land.translate(groundX, groundY);
     lighting.drawSpill(land);
-    land.restore();
     ctx.drawImage(this.land.canvas, 0, 0);
     if (chapter === 2) this.life.drawCranes(ctx, time);
-    ctx.save();
-    ctx.translate(groundX, groundY);
     lighting.drawLanterns(ctx, assets);
-    ctx.restore();
-    this.interactions.drawPetals(ctx, chapter, time, night, groundX, groundY);
+    this.interactions.drawPetals(ctx, chapter, time, night);
     this.life.drawFireflies(ctx, time, night, chapter, this.designWidth);
   }
 }

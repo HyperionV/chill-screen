@@ -19,11 +19,15 @@ export function rect(ctx: CanvasRenderingContext2D, color: string, x: number, y:
   ctx.fillRect(Math.round(x), Math.round(y), Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
 }
 
+function ovalHalfWidth(rx: number, row: number, radius: number): number {
+  return Math.round(rx * Math.sqrt(Math.max(0, 1 - row * row / (radius * radius))));
+}
+
 export function oval(ctx: CanvasRenderingContext2D, color: string, x: number, y: number, rx: number, ry: number): void {
   ctx.fillStyle = color;
   const radius = Math.max(1, Math.round(ry));
   for (let row = -radius; row <= radius; row++) {
-    const half = Math.round(rx * Math.sqrt(Math.max(0, 1 - row * row / (radius * radius))));
+    const half = ovalHalfWidth(rx, row, radius);
     ctx.fillRect(Math.round(x) - half, Math.round(y) + row, half * 2 + 1, 1);
   }
 }
@@ -55,19 +59,36 @@ function tree(seed: number): BlossomTree {
     }
   }
   const crown = memoryCanvas(TREE_WIDTH, TREE_HEIGHT);
+  const silhouette = new Uint8Array(TREE_WIDTH * TREE_HEIGHT);
+  // Record the same opaque rows the crown draws so the moonlit edge follows the sprite.
+  const crownOval = (color: string, x: number, y: number, rx: number, ry: number): void => {
+    crown.ctx.fillStyle = color;
+    const radius = Math.max(1, Math.round(ry));
+    const centerX = Math.round(x);
+    const centerY = Math.round(y);
+    for (let row = -radius; row <= radius; row++) {
+      const py = centerY + row;
+      if (py < 0 || py >= TREE_HEIGHT) continue;
+      const half = ovalHalfWidth(rx, row, radius);
+      const start = Math.max(0, centerX - half);
+      const end = Math.min(TREE_WIDTH, centerX + half + 1);
+      if (end <= start) continue;
+      crown.ctx.fillRect(start, py, end - start, 1);
+      const offset = py * TREE_WIDTH;
+      silhouette.fill(1, offset + start, offset + end);
+    }
+  };
   for (let i = 0; i < 15; i++) {
     const cx = 15 + hash(i + seed * 40) * 70;
     const cy = 15 + hash(i + 18 + seed * 40) * 29;
     const radius = 15 + hash(i + 65) * 8;
-    oval(crown.ctx, BLOSSOM[0], cx, cy + 6, radius, radius * 0.66);
-    oval(crown.ctx, BLOSSOM[1], cx, cy + 2, radius, radius * 0.65);
-    oval(crown.ctx, BLOSSOM[2], cx - 2, cy, radius - 2, radius * 0.53);
-    oval(crown.ctx, BLOSSOM[3], cx - 4, cy - 4, radius * 0.65, radius * 0.3);
+    crownOval(BLOSSOM[0], cx, cy + 6, radius, radius * 0.66);
+    crownOval(BLOSSOM[1], cx, cy + 2, radius, radius * 0.65);
+    crownOval(BLOSSOM[2], cx - 2, cy, radius - 2, radius * 0.53);
+    crownOval(BLOSSOM[3], cx - 4, cy - 4, radius * 0.65, radius * 0.3);
   }
-  // Read the baked crown once so blossoms and the moonlit edge stay inside its silhouette.
-  const pixels = crown.ctx.getImageData(0, 0, TREE_WIDTH, TREE_HEIGHT).data;
   const covered = (x: number, y: number): boolean =>
-    x >= 0 && x < TREE_WIDTH && y >= 0 && y < TREE_HEIGHT && pixels[(y * TREE_WIDTH + x) * 4 + 3] !== 0;
+    x >= 0 && x < TREE_WIDTH && y >= 0 && y < TREE_HEIGHT && silhouette[y * TREE_WIDTH + x] !== 0;
   crown.ctx.globalCompositeOperation = 'source-atop';
   for (let i = 0; i < 390; i++) {
     const x = Math.floor(hash(i + seed * 700) * 94) + 3;
