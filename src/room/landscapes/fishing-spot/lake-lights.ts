@@ -1,14 +1,18 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
+import { breeze } from '../../wind';
 import type { SkyState } from '../../sky';
 import { drawBoxBottom } from './creatures';
 import { boathouseX, cabinX } from './far-shore';
 import type { FishingSprites, SpriteBox } from './sprites';
 import type { SceneIndex, SceneLayout } from './types';
+import { lanternBend } from './wind-sprites';
 
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 const FLICKER_RATE = 1.9;
 const WINDOW_HALO_SCALE = 0.38;
 const WINDOW_REFLECTION_SCALE = 0.4;
+/** Maximum movement of reflected light on the water, in stage pixels. */
+const REFLECTION_SWAY = 2;
 const WARM_HIGHLIGHT = 'rgba(255,220,146,0.44)';
 const WARM_EDGE = 'rgba(241,163,91,0.22)';
 
@@ -42,14 +46,13 @@ export class LakeLights {
   private readonly plank = buildSpill(43, 9, false);
   private readonly water = buildSpill(47, 29, true);
 
-  draw(ctx: CanvasRenderingContext2D, sprites: FishingSprites, state: SkyState, scene: SceneIndex, layout: SceneLayout, time: number, parallaxX: number): void {
+  draw(ctx: CanvasRenderingContext2D, sprites: FishingSprites, state: SkyState, scene: SceneIndex, layout: SceneLayout, time: number): void {
     const night = 1 - state.day;
     const farStrength = night * 0.84;
     const u = layout.unit;
     if (farStrength > 0.04) {
-      const bankShift = Math.round(parallaxX * 3 * u) / u;
-      const cabin = cabinX(layout) + bankShift;
-      const shed = boathouseX(layout) + bankShift;
+      const cabin = cabinX(layout);
+      const shed = boathouseX(layout);
       const shore = layout.waterTopY;
       ctx.save();
       ctx.globalAlpha = farStrength * 0.48;
@@ -61,9 +64,8 @@ export class LakeLights {
       drawBoxBottom(ctx, sprites.cabinGlow, cabin, shore, u);
       drawBoxBottom(ctx, sprites.boathouseGlow, shed, shore + 1, u);
       ctx.globalAlpha = farStrength * 0.66;
-      const sway = Math.sin(time * 0.82);
-      drawSpill(ctx, this.water, cabin + sway, shore + 1, u, WINDOW_REFLECTION_SCALE);
-      drawSpill(ctx, this.water, shed - sway, shore + 1, u, WINDOW_REFLECTION_SCALE);
+      drawSpill(ctx, this.water, cabin + breeze(time, cabin * u) / u, shore + 1, u, WINDOW_REFLECTION_SCALE);
+      drawSpill(ctx, this.water, shed + breeze(time, shed * u) / u, shore + 1, u, WINDOW_REFLECTION_SCALE);
       ctx.restore();
     }
 
@@ -73,21 +75,20 @@ export class LakeLights {
     const d = layout.deckY;
     const r = layout.rightZone;
     ctx.save();
-    ctx.translate(Math.round(parallaxX * 5.5 * u), 0);
     if (scene === 0) {
-      this.drawLamp(ctx, sprites.haloLantern, j - 9.5, d - 20.5, d, d + 12, u, strength, time);
+      this.drawLamp(ctx, sprites.haloLantern, j - 9.5, d - 20.5, d, d + 12, u, strength, time, 0, true);
     } else if (scene === 1) {
-      this.drawLamp(ctx, sprites.haloLantern, 48.5, d - 24.5, d + 2, d + 14, u, strength, time + 1);
+      this.drawLamp(ctx, sprites.haloLantern, 48.5, d - 24.5, d + 2, d + 14, u, strength, time, 1, true);
     } else if (scene === 2) {
-      this.drawLamp(ctx, sprites.haloLantern, 124.5, d - 16.5, d + 4, d + 16, u, strength, time + 2);
+      this.drawLamp(ctx, sprites.haloLantern, 124.5, d - 16.5, d + 4, d + 16, u, strength, time, 2, true);
     } else if (scene === 3) {
-      this.drawLamp(ctx, sprites.haloLantern, 28.5, d - 6.5, d, d + 13, u, strength, time);
-      this.drawLamp(ctx, sprites.haloLantern, j - 7.5, d - 6.5, d, d + 12, u, strength, time + 1.5);
-      this.drawLamp(ctx, sprites.haloLantern, r + 36.5, 195.5, null, 217, u, strength, time + 2);
-      this.drawLamp(ctx, sprites.haloEmber, j - 55, d - 4, d, null, u, 0.38 + 0.38 * night, time + 1);
+      this.drawLamp(ctx, sprites.haloLantern, 28.5, d - 6.5, d, d + 13, u, strength, time, 0, true);
+      this.drawLamp(ctx, sprites.haloLantern, j - 7.5, d - 6.5, d, d + 12, u, strength, time, 1.5, true);
+      this.drawLamp(ctx, sprites.haloLantern, r + 36.5, 195.5, null, 217, u, strength, time, 2, true);
+      this.drawLamp(ctx, sprites.haloEmber, j - 55, d - 4, d, null, u, 0.38 + 0.38 * night, time, 1);
     } else {
       this.drawLamp(ctx, sprites.haloLantern, j - 18, d - 5.5, d, d + 11, u, strength, time);
-      this.drawLamp(ctx, sprites.haloEmber, r + 31, 176.5, null, 192, u, strength * 0.8, time + 1.5);
+      this.drawLamp(ctx, sprites.haloEmber, r + 31, 176.5, null, 192, u, strength * 0.8, time, 1.5, true);
     }
     ctx.restore();
   }
@@ -101,17 +102,22 @@ export class LakeLights {
     waterY: number | null,
     unit: number,
     strength: number,
-    phase: number,
+    time: number,
+    phase = 0,
+    hanging = false,
   ): void {
-    const glow = strength * (0.92 + 0.08 * Math.sin(phase * FLICKER_RATE));
+    const glow = strength * (0.92 + 0.08 * Math.sin((time + phase) * FLICKER_RATE));
+    const stageX = x * unit;
+    const bend = hanging ? lanternBend(time, stageX) : 0;
+    const center = x + Math.sign(bend) * Math.round(Math.abs(bend) / 2) / unit;
     ctx.globalAlpha = glow;
     const h = Math.max(1, Math.round(halo.h * unit));
     const w = Math.max(1, Math.round(halo.w * unit));
-    ctx.drawImage(halo.canvas, Math.round(x * unit - w / 2), Math.round(y * unit - h / 2), w, h);
-    if (plankY !== null) drawSpill(ctx, this.plank, x, plankY, unit);
+    ctx.drawImage(halo.canvas, Math.round(center * unit - w / 2), Math.round(y * unit - h / 2), w, h);
+    if (plankY !== null) drawSpill(ctx, this.plank, center, plankY, unit);
     if (waterY !== null) {
       ctx.globalAlpha = glow * 0.74;
-      drawSpill(ctx, this.water, x + Math.sin(phase * 1.18) * 1.6, waterY, unit);
+      drawSpill(ctx, this.water, center + breeze(time, stageX) * REFLECTION_SWAY / unit, waterY, unit);
     }
   }
 }

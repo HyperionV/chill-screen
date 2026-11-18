@@ -1,8 +1,10 @@
 import { css, type RGB } from '../../../render/color';
 import { hash } from '../../journeys/noise';
+import { breeze } from '../../wind';
 import { drawBoxBottom } from './creatures';
-import type { FishingSprites } from './sprites';
+import type { FishingSprites, SpriteBox } from './sprites';
 import type { SceneIndex, SceneLayout } from './types';
+import { BANK_REED_SWAY, drawWindSprite, LILY_SWAY } from './wind-sprites';
 
 const PLANK_LIT: RGB = [164, 124, 86];
 const PLANK_MID: RGB = [124, 90, 60];
@@ -189,35 +191,16 @@ export function drawJetty(
   }
 }
 
-/** Draws layered reeds, cattails, organic shoals, and lily pad clusters tailored to each scene. */
-export function drawSceneFlora(
-  L: CanvasRenderingContext2D,
-  sprites: FishingSprites,
-  scene: SceneIndex,
-  layout: SceneLayout,
-  u: number,
-  time: number,
-): void {
-  const rZone = layout.rightZone;
+interface Flora {
+  pads: readonly { x: number; y: number; v: number }[];
+  reeds: readonly { x: number; y: number; idx: number }[];
+}
 
-  // Scene 1 stepped organic sandbar & submerged stones on right shallows (never a flat rectangle)
-  if (scene === 1) {
-    const dot = Math.max(1, Math.round(u));
-    const sx = Math.round((rZone + 22) * u);
-    const sy = Math.round(202 * u);
-    const sw = Math.round(138 * u);
-    L.fillStyle = 'rgba(138,130,90,0.34)';
-    L.fillRect(sx + dot * 12, sy, sw - dot * 12, Math.round(4 * u));
-    L.fillRect(sx + dot * 6, sy + Math.round(4 * u), sw - dot * 6, Math.round(6 * u));
-    L.fillRect(sx + dot * 2, sy + Math.round(10 * u), sw - dot * 2, Math.round(8 * u));
-    L.fillStyle = 'rgba(116,110,76,0.38)';
-    for (let i = 0; i < 28; i++) {
-      const px = sx + Math.round(((i * 9) % 132) * u);
-      const py = sy + Math.round(((i % 6) * 3.5) * u);
-      L.fillRect(px, py, dot * (2 + (i % 3)), dot);
-    }
-  }
+export function buildSceneFlora(layout: SceneLayout): Flora[] {
+  return [0, 1, 2, 3, 4].map((scene) => placeSceneFlora(scene, layout.rightZone));
+}
 
+function placeSceneFlora(scene: number, rZone: number): Flora {
   const pads =
     scene === 1
       ? [
@@ -247,14 +230,7 @@ export function drawSceneFlora(
             { x: rZone + 116, y: 226, v: 0 },
           ];
 
-  for (const p of pads) {
-    const sp = sprites.lilyPads[p.v];
-    if (!sp) continue;
-    const bob = Math.sin(time * 1.4 + p.x * 0.1) * 0.4;
-    drawBoxBottom(L, sp, p.x, p.y + bob, u);
-  }
-
-  const reedSpots =
+  const reeds =
     scene === 1
       ? [
           { x: 8, y: 206, idx: 0 },
@@ -279,10 +255,51 @@ export function drawSceneFlora(
           { x: rZone + 156, y: 228, idx: 3 },
         ];
 
-  for (const r of reedSpots) {
+  return { pads, reeds };
+}
+
+function drawPlant(
+  ctx: CanvasRenderingContext2D, sprite: SpriteBox, x: number, y: number, unit: number, sway: number,
+): void {
+  const w = Math.max(1, Math.round(sprite.w * unit));
+  const h = Math.max(1, Math.round(sprite.h * unit));
+  drawWindSprite(ctx, sprite, Math.round(x * unit - w / 2), Math.round(y * unit - h), w, h, sway);
+}
+
+/** Draws layered reeds, cattails, organic shoals, and lily pad clusters tailored to each scene. */
+export function drawSceneFlora(
+  L: CanvasRenderingContext2D,
+  sprites: FishingSprites,
+  scene: SceneIndex,
+  layout: SceneLayout,
+  flora: Flora,
+  time: number,
+): void {
+  const u = layout.unit;
+  // Shallow sandbar and submerged stones along the right of Reed Shallows.
+  if (scene === 1) {
+    const dot = Math.max(1, Math.round(u));
+    const sx = Math.round((layout.rightZone + 22) * u);
+    const sy = Math.round(202 * u);
+    const sw = Math.round(138 * u);
+    L.fillStyle = 'rgba(138,130,90,0.34)';
+    L.fillRect(sx + dot * 12, sy, sw - dot * 12, Math.round(4 * u));
+    L.fillRect(sx + dot * 6, sy + Math.round(4 * u), sw - dot * 6, Math.round(6 * u));
+    L.fillRect(sx + dot * 2, sy + Math.round(10 * u), sw - dot * 2, Math.round(8 * u));
+    L.fillStyle = 'rgba(116,110,76,0.38)';
+    for (let i = 0; i < 28; i++) {
+      const px = sx + Math.round(((i * 9) % 132) * u);
+      const py = sy + Math.round(((i % 6) * 3.5) * u);
+      L.fillRect(px, py, dot * (2 + (i % 3)), dot);
+    }
+  }
+
+  for (const p of flora.pads) {
+    const sp = sprites.lilyPads[p.v];
+    if (sp) drawPlant(L, sp, p.x, p.y, u, Math.round(breeze(time, p.x * u) * LILY_SWAY));
+  }
+  for (const r of flora.reeds) {
     const sp = sprites.reeds[r.idx];
-    if (!sp) continue;
-    const sway = Math.sin(time * 1.5 + r.x * 0.04) * 1.1;
-    drawBoxBottom(L, sp, r.x + sway, r.y, u);
+    if (sp) drawPlant(L, sp, r.x, r.y, u, Math.round(breeze(time, r.x * u) * BANK_REED_SWAY));
   }
 }

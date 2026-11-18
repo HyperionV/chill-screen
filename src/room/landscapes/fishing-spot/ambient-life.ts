@@ -1,4 +1,5 @@
 import { clamp, rand } from '../../../world/math';
+import { breeze, gust } from '../../wind';
 import type { RippleTrigger } from './creatures';
 import type { FishingSprites } from './sprites';
 import type { PointerDesign, SceneIndex, SceneLayout } from './types';
@@ -68,6 +69,8 @@ const DRAGONFLY_COUNT = 4;
 const JUMP_SLOTS = 2;
 const MAX_WAKES = 44;
 const LEAF_COUNT = 12;
+/** Gusts increase the speed of the leaves already on the lake. */
+const FLOATING_LEAF_GUST_SPEEDUP = 0.65;
 const MOTH_COUNT = 8;
 const FIREFLY_COUNT = 20;
 const LEAF_FIRST_ROW = 169;
@@ -203,7 +206,7 @@ export class AmbientLakeLife {
     this.stepFishJumps(dt, scene, layout, onRipple);
     this.stepAmbientRings(dt, layout, onRipple);
     this.stepWakes(dt);
-    this.stepLeaves(dt, layout, pointer, onRipple);
+    this.stepLeaves(dt, time, layout, pointer, onRipple);
     this.stepMoths(dt, scene, layout, pointer);
     this.stepFireflies(dt, layout);
   }
@@ -320,12 +323,14 @@ export class AmbientLakeLife {
 
   private stepLeaves(
     dt: number,
+    time: number,
     layout: SceneLayout,
     pointer: PointerDesign | null,
     onRipple: (r: RippleTrigger) => void,
   ): void {
+    const drift = (1 + gust(time) * FLOATING_LEAF_GUST_SPEEDUP) * dt;
     for (const lf of this.leaves) {
-      lf.x += lf.speed * dt;
+      lf.x += lf.speed * drift;
       if (pointer && pointer.speed > 75) {
         const d = Math.hypot(lf.x - pointer.x, lf.y - pointer.y);
         if (d < 16 && d > 0.5) {
@@ -402,7 +407,7 @@ export class AmbientLakeLife {
     for (const lf of this.leaves) {
       const sp = sprites.leaves[lf.variant];
       if (!sp) continue;
-      const bob = Math.sin(time * 1.8 + lf.phase) * 0.45;
+      const bob = breeze(time, lf.x) * 0.45 + Math.sin(time * 1.8 + lf.phase) * 0.45;
       const sw = Math.max(1, Math.round(sp.w * unit));
       const sh = Math.max(1, Math.round(sp.h * unit));
       ctx.drawImage(sp.canvas, 0, 0, sp.w, sp.h, Math.round(lf.x * unit), Math.round((lf.y + bob) * unit), sw, sh);

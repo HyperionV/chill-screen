@@ -1,13 +1,14 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash, noise } from '../../journeys/noise';
 import { pixmap } from '../../journeys/pixmap';
+import { breeze } from '../../wind';
 import type { FishingSprites } from './sprites';
-import type { SceneIndex, SceneLayout } from './types';
+import type { SceneIndex, SceneLayout, SpriteBox } from './types';
+import { BANK_REED_SWAY, drawWindSprite, LILY_SWAY } from './wind-sprites';
 
 // Insets keep the two banks clear of the radio while leaving room for open water between them.
 const BANK_WIDTH = 156;
 const BANK_TOP = 227;
-const BANK_MARGIN = 24;
 const DRY_BANK_ROWS = 10;
 const PEBBLE_COUNT = 32;
 const REED_CLUMPS = 8;
@@ -19,6 +20,20 @@ const BANKS = [
   { left: 125, right: 99, scoop: 0.43, gravel: '#948066' },
   { left: 74, right: 130, scoop: 0.57, gravel: '#757665' },
 ];
+
+interface BankPlant {
+  sprite: SpriteBox;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  sway: number;
+}
+
+interface Bank {
+  canvas: HTMLCanvasElement;
+  plants: readonly BankPlant[];
+}
 
 function rockSprites(): HTMLCanvasElement[] {
   const colors = { h: '#aaa791', m: '#777e70', s: '#545f56', d: '#3b4944', g: '#77885b' };
@@ -45,7 +60,7 @@ function paintBank(
   gravel: string,
   seed: number,
   height: number,
-): void {
+): BankPlant[] {
   const bankTop = (x: number) => Math.round(14 + 26 * (x / reach) ** 1.7 + noise(x / 14 + seed) * 5);
   for (let x = 0; x < reach; x++) {
     const y = bankTop(x);
@@ -82,6 +97,7 @@ function paintBank(
     ctx.drawImage(rock, x, y - rock.height + 1);
   }
 
+  const plants: BankPlant[] = [];
   for (let i = 0; i < REED_CLUMPS; i++) {
     const s = seed * 37 + i * 17;
     const x = Math.round(reach * (0.04 + i * 0.10) + hash(s) * 6);
@@ -90,10 +106,10 @@ function paintBank(
     const reed = sprites.reeds[i % sprites.reeds.length];
     const spread = Math.round(10 + hash(s + 1) * 9);
     const tall = Math.round(9 + hash(s + 2) * 11);
-    ctx.drawImage(reed.canvas, x - 6, y - tall, spread, tall);
+    plants.push({ sprite: reed, x: x - 6, y: y - tall, w: spread, h: tall, sway: BANK_REED_SWAY });
   }
 
-  // Each clump has a flower or bud and smaller pads drifting out into the cove.
+  // Each clump has a flower or bud and smaller pads around it.
   for (let i = 0; i < PAD_CLUSTERS; i++) {
     const x = Math.round(reach * (0.22 + i * 0.28));
     const y = bankTop(x) - 9 - Math.round(hash(seed + i * 7) * 6);
@@ -101,15 +117,34 @@ function paintBank(
     const small = sprites.lilyPads[2];
     ctx.fillStyle = 'rgba(38,68,61,0.35)';
     ctx.fillRect(x - 2, y + 1, bloom.w + 4, 1);
-    ctx.drawImage(bloom.canvas, x, y - bloom.h + 1);
-    ctx.drawImage(small.canvas, x - 9, y - 7);
-    ctx.drawImage(small.canvas, x + 8, y + 3, 7, 2);
+    plants.push(
+      { sprite: bloom, x, y: y - bloom.h + 1, w: bloom.w, h: bloom.h, sway: LILY_SWAY },
+      { sprite: small, x: x - 9, y: y - 7, w: small.w, h: small.h, sway: LILY_SWAY },
+      { sprite: small, x: x + 8, y: y + 3, w: 7, h: 2, sway: LILY_SWAY },
+    );
   }
+  return plants;
 }
 
 interface BankPair {
-  left: HTMLCanvasElement;
-  right: HTMLCanvasElement;
+  left: Bank;
+  right: Bank;
+}
+
+function drawBankPlants(
+  ctx: CanvasRenderingContext2D, bank: Bank, edge: number, y: number, unit: number, time: number, direction: number,
+): void {
+  ctx.save();
+  ctx.translate(edge, y);
+  ctx.scale(direction, 1);
+  for (const plant of bank.plants) {
+    const stageX = edge + direction * (plant.x + plant.w / 2) * unit;
+    const bend = Math.round(breeze(time, stageX) * plant.sway) * direction;
+    const w = Math.max(1, Math.round(plant.w * unit));
+    const h = Math.max(1, Math.round(plant.h * unit));
+    drawWindSprite(ctx, plant.sprite, Math.round(plant.x * unit), Math.round(plant.y * unit), w, h, bend);
+  }
+  ctx.restore();
 }
 
 export class NearShore {
@@ -122,31 +157,36 @@ export class NearShore {
     const width = Math.max(1, Math.floor(Math.min(BANK_WIDTH, layout.designW * 0.32)));
     const height = layout.designH - BANK_TOP;
     this.banks = BANKS.map((bank, scene) => {
-      const left = memoryCanvas(width + BANK_MARGIN, height);
-      const right = memoryCanvas(width + BANK_MARGIN, height);
+      const left = memoryCanvas(width, height);
+      const right = memoryCanvas(width, height);
       left.ctx.imageSmoothingEnabled = false;
       right.ctx.imageSmoothingEnabled = false;
-      left.ctx.translate(BANK_MARGIN, 0);
       right.ctx.translate(width, 0);
       right.ctx.scale(-1, 1);
-      paintBank(left.ctx, rocks, sprites, width * bank.left / BANK_WIDTH, bank.scoop, bank.gravel, 21 + scene, height);
-      paintBank(right.ctx, rocks, sprites, width * bank.right / BANK_WIDTH, bank.scoop, bank.gravel, 57 + scene, height);
-      left.ctx.drawImage(left.canvas, BANK_MARGIN, 0, 1, height, -BANK_MARGIN, 0, BANK_MARGIN, height);
-      right.ctx.setTransform(1, 0, 0, 1, 0, 0);
-      right.ctx.drawImage(right.canvas, width - 1, 0, 1, height, width, 0, BANK_MARGIN, height);
-      return { left: left.canvas, right: right.canvas };
+      const leftPlants = paintBank(left.ctx, rocks, sprites, width * bank.left / BANK_WIDTH, bank.scoop, bank.gravel, 21 + scene, height);
+      const rightPlants = paintBank(right.ctx, rocks, sprites, width * bank.right / BANK_WIDTH, bank.scoop, bank.gravel, 57 + scene, height);
+      return { left: { canvas: left.canvas, plants: leftPlants }, right: { canvas: right.canvas, plants: rightPlants } };
     });
   }
 
-  draw(ctx: CanvasRenderingContext2D, layout: SceneLayout, scene: SceneIndex, parallaxX: number): void {
+  draw(ctx: CanvasRenderingContext2D, layout: SceneLayout, scene: SceneIndex, time: number): void {
     const bank = this.banks[scene];
     if (!bank) return;
     const u = layout.unit;
-    const w = Math.max(1, Math.round(bank.left.width * u));
-    const h = Math.max(1, Math.round(bank.left.height * u));
+    const w = Math.max(1, Math.round(bank.left.canvas.width * u));
+    const h = Math.max(1, Math.round(bank.left.canvas.height * u));
     const y = Math.round(BANK_TOP * u);
-    const shift = Math.round(parallaxX * 7 * u);
-    ctx.drawImage(bank.left, shift - Math.round(BANK_MARGIN * u), y, w, h);
-    ctx.drawImage(bank.right, Math.round((layout.designW + BANK_MARGIN) * u) - w + shift, y, w, h);
+    const right = Math.round(layout.designW * u);
+    ctx.drawImage(bank.left.canvas, 0, y, w, h);
+    ctx.drawImage(bank.right.canvas, right - w, y, w, h);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, y, w, h);
+    ctx.rect(right - w, y, w, h);
+    ctx.clip();
+    drawBankPlants(ctx, bank.left, 0, y, u, time, 1);
+    drawBankPlants(ctx, bank.right, right, y, u, time, -1);
+    ctx.restore();
   }
 }

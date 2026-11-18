@@ -2,6 +2,7 @@ import { css, mix, shade, type RGB } from '../../../render/color';
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { hash } from '../../journeys/noise';
 import type { SkyState } from '../../sky';
+import { breeze, gust } from '../../wind';
 import type { SceneIndex, SceneLayout } from './types';
 
 const WHITE: RGB = [255, 255, 255];
@@ -13,7 +14,7 @@ const MOONLIT_WATER: RGB = [59, 83, 111];
 const MOON_GLITTER: RGB = [216, 226, 252];
 const WAVE_LIMIT = 520;
 const SEAM_ROWS = 4;
-const MIST_PADDING = 74;
+const MIST_PADDING = 84;
 const MIST_WIDTHS = [46, 63, 77];
 const MIST_HEIGHT = 7;
 
@@ -23,6 +24,15 @@ const SPARKLE_COUNT = 26;
 const STAR_REFLECT_COUNT = 28;
 const FAR_MIST_RIBBONS = 6;
 const NEAR_MIST_RIBBONS = 5;
+/** Mist travels in design pixels per second, with more drift during gusts. */
+const FAR_MIST_SPEED = 1.2;
+const NEAR_MIST_SPEED = 2.5;
+const MIST_GUST_SPEEDUP = 0.65;
+/** The mist stretches slowly as it drifts. */
+const MIST_STRETCH = 0.06;
+const MIST_STRETCH_RATE = 0.27;
+const MIST_HEIGHT_SWELL = 1;
+const MIST_BOB = 1;
 
 interface Wavelet {
   x: number;
@@ -58,12 +68,16 @@ export class FishingWater {
   private readonly seam = memoryCanvas(1, SEAM_ROWS);
   private readonly waves: Wavelet[] = [];
   private mist: HTMLCanvasElement[] = [];
+  private mistSpan = 1;
+  private farMistX = 0;
+  private nearMistX = 0;
 
   resize(w: number, h: number, layout: SceneLayout): void {
     this.w = w;
     this.h = h;
     const u = layout.unit;
     this.top = Math.round(layout.waterTopY * u);
+    this.mistSpan = layout.designW + MIST_PADDING * 2;
     this.seam.canvas.width = Math.max(1, Math.ceil(layout.designW));
     this.seam.ctx.fillStyle = 'rgba(21,41,55,0.16)';
     for (let y = 0; y < SEAM_ROWS; y++) {
@@ -96,6 +110,12 @@ export class FishingWater {
     if (this.mist.length === 0) this.mist = MIST_WIDTHS.map(buildMist);
   }
 
+  stepMist(time: number, dt: number): void {
+    const travel = dt * (1 + gust(time) * MIST_GUST_SPEEDUP);
+    this.farMistX = (this.farMistX + travel * FAR_MIST_SPEED) % this.mistSpan;
+    this.nearMistX = (this.nearMistX + travel * NEAR_MIST_SPEED) % this.mistSpan;
+  }
+
   /** Draws the lake body, shore reflections, waves, sun/moon glitter, wind sparkles, and night star reflections. */
   drawWater(
     L: CanvasRenderingContext2D,
@@ -103,7 +123,6 @@ export class FishingWater {
     scene: SceneIndex,
     layout: SceneLayout,
     time: number,
-    parallaxX: number,
   ): void {
     const u = layout.unit;
     const dot = Math.max(1, Math.round(u));
@@ -141,7 +160,6 @@ export class FishingWater {
       }
     }
 
-    const pShift = parallaxX * 3.5 * u;
     const troughCol = css(shade(deepCol, 0.72), 0.36);
     const crestCol = css(mix(topCol, WHITE, 0.18 + 0.12 * state.day), 0.46);
 
@@ -149,7 +167,7 @@ export class FishingWater {
     for (const wave of this.waves) {
       const swell = Math.sin(time * wave.rate + wave.phase);
       if (swell < 0.17) continue;
-      const x = wave.x + time * wave.drift + pShift * (0.4 + (wave.y - top) / span);
+      const x = wave.x + time * wave.drift;
       const wrapped = ((x % this.w) + this.w) % this.w;
       L.fillStyle = wave.crest ? crestCol : troughCol;
       L.globalAlpha = Math.min(1, (swell - 0.17) * 1.3);
@@ -163,7 +181,7 @@ export class FishingWater {
       const isSun = state.sun.up > -0.02;
       const strength = isSun ? 0.55 : 0.45 * (1 - state.day);
       const col = isSun ? mix(state.sky.light, WHITE, 0.5) : MOON_GLITTER;
-      const cx = body.u * this.w + pShift * 0.5;
+      const cx = body.u * this.w;
       L.save();
       L.fillStyle = css(col);
       for (let i = 0; i < GLITTER_COUNT; i++) {
@@ -192,7 +210,7 @@ export class FishingWater {
       const pulse = Math.sin(time * (1.2 + hash(seed) * 1.1) + hash(seed + 1) * 6.28);
       if (pulse < 0.62) continue;
       const f = hash(seed + 2);
-      const gx = (((hash(seed + 3) * this.w + pShift * (0.4 + 0.5 * f)) % this.w) + this.w) % this.w;
+      const gx = hash(seed + 3) * this.w;
       const gy = Math.round(top + 4 * u + f * (span - 10 * u));
       const tw = (pulse - 0.62) / 0.38;
       L.globalAlpha = tw * sparkleAlphaBase;
@@ -208,7 +226,7 @@ export class FishingWater {
     const starShow = Math.max(0, 1 - state.day * 1.3);
     if (starShow > 0.08) {
       for (let i = 0; i < STAR_REFLECT_COUNT; i++) {
-        const sx = Math.round(hash(i * 41 + 3) * this.w + pShift * 0.5);
+        const sx = Math.round(hash(i * 41 + 3) * this.w);
         const sy = Math.round(top + 6 * u + hash(i * 41 + 7) * (span * 0.52));
         const tw = 0.45 + 0.55 * Math.sin(time * (1.2 + hash(i) * 1.4) + i);
         L.fillStyle = `rgba(226,236,255,${(0.45 * starShow * tw).toFixed(3)})`;
@@ -229,7 +247,6 @@ export class FishingWater {
     layout: SceneLayout,
     time: number,
     hour: number,
-    parallaxX: number,
   ): void {
     const u = layout.unit;
     const dot = Math.max(1, Math.round(u));
@@ -242,26 +259,26 @@ export class FishingWater {
     if (strength < 0.05) return;
 
     const alpha = ctx.globalAlpha;
-    const span = this.w + MIST_PADDING * u * 2;
-    const spriteHeight = Math.max(1, Math.round(MIST_HEIGHT * u));
+    const span = this.mistSpan;
     ctx.save();
 
     // Smaller wisps soften the waterline while the second layer drifts over the bay.
     for (let layer = 0; layer < 2; layer++) {
       const count = layer === 0 ? FAR_MIST_RIBBONS : NEAR_MIST_RIBBONS;
-      const drift = layer === 0 ? 1.2 : 2.5;
+      const travel = layer === 0 ? this.farMistX : this.nearMistX;
       const depth = layer === 0 ? -1 : 13;
-      const shift = parallaxX * (layer === 0 ? 2.2 : 4.2) * u;
       const strengthAtDepth = layer === 0 ? 0.36 : 0.20;
       for (let i = 0; i < count; i++) {
         const wisp = this.mist[(i + scene) % this.mist.length];
         if (!wisp) continue;
-        const x = Math.round((i * span / count + time * drift * u) % span - MIST_PADDING * u + shift);
-        const w = Math.max(1, Math.round(wisp.width * u));
+        const x = Math.round(((i * span / count + travel) % span - MIST_PADDING) * u);
+        const stretch = Math.sin(time * MIST_STRETCH_RATE + i + layer);
+        const w = Math.max(1, Math.round(wisp.width * u * (1 + stretch * MIST_STRETCH)));
+        const h = Math.max(1, Math.round(MIST_HEIGHT * u + stretch * MIST_HEIGHT_SWELL));
         if (x + w < 0 || x >= this.w) continue;
-        const y = this.top + Math.round((depth + (i % 3) * 3 + Math.sin(time * 0.32 + i)) * u);
+        const y = this.top + Math.round((depth + (i % 3) * 3) * u + breeze(time, x / u) * MIST_BOB);
         ctx.globalAlpha = alpha * strength * strengthAtDepth * (0.8 + 0.2 * Math.sin(time * 0.21 + i));
-        ctx.drawImage(wisp, x, y - dot, w, spriteHeight);
+        ctx.drawImage(wisp, x, y - dot, w, h);
       }
     }
     ctx.restore();
