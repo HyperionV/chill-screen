@@ -1,3 +1,5 @@
+import { buildHiddenWorld } from './ch-hidden';
+import { buildLakeWorld } from './ch-lake';
 import { buildShackWorld } from './ch-shack';
 import { buildTownWorld } from './ch-town';
 import { buildWoodsWorld } from './ch-woods';
@@ -8,4 +10,6 @@ export const WORLDS: readonly { build: WorldBuilder }[] = [
   { build: buildShackWorld },
   { build: buildWoodsWorld },
   { build: buildTownWorld },
+  { build: buildLakeWorld },
+  { build: buildHiddenWorld },
 ];
