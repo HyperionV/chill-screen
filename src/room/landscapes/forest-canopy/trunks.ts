@@ -6,10 +6,10 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { bayer } from '../../gravity-falls/art-kit';
 import { hash } from '../../journeys/noise';
-import { DESIGN_HEIGHT, perspective, railAt, type Perspective } from './layout';
+import { DESIGN_HEIGHT, railAt, type Perspective } from './layout';
 
 /** Bark from deep shade to sunlit gold, and the moss that grows on the shaded side. */
-const BARK = ['#1b120e', '#3a281d', '#5c4130', '#8a6644', '#d9aa60'] as const;
+export const BARK = ['#1b120e', '#3a281d', '#5c4130', '#8a6644', '#d9aa60'] as const;
 const MOSS = ['#1e3b22', '#2f5a2c', '#5a8a36'] as const;
 const BARK_STEPS = BARK.length;
 /** Pixels of trunk width at the bottom row that one bark streak covers. */
@@ -28,6 +28,8 @@ export interface Trunk {
   baseX: number;
   /** Width at the bottom row, in pixels. */
   width: number;
+  /** Rows above this one are left empty: an oak's trunk ends where it splits into boughs. */
+  top?: number;
 }
 
 type Rgb = readonly [number, number, number];
@@ -50,7 +52,7 @@ function palette(hazeColour: string, haze: number): { bark: Rgb[]; moss: Rgb[] }
 function paintTrunk(data: Uint8ClampedArray, width: number, p: Perspective, trunk: Trunk, colours: ReturnType<typeof palette>, seed: number): void {
   const litOnRight = trunk.baseX <= p.sunX;
   const streaks = Math.max(MIN_STREAKS, Math.round(trunk.width / STREAK_PIXELS));
-  for (let y = 0; y < DESIGN_HEIGHT; y++) {
+  for (let y = trunk.top ?? 0; y < DESIGN_HEIGHT; y++) {
     const left = railAt(p, trunk.baseX - trunk.width / 2, y);
     const right = railAt(p, trunk.baseX + trunk.width / 2, y);
     const span = right - left;
@@ -83,10 +85,10 @@ function paintTrunk(data: Uint8ClampedArray, width: number, p: Perspective, trun
 }
 
 /** One picture holding every trunk of a depth. `haze` is how much of `hazeColour` the layer is seen through. */
-export function paintTrunks(width: number, trunks: readonly Trunk[], hazeColour: string, haze: number, seed: number): HTMLCanvasElement {
+export function paintTrunks(p: Perspective, trunks: readonly Trunk[], hazeColour: string, haze: number, seed: number): HTMLCanvasElement {
+  const { width } = p;
   const { canvas, ctx } = memoryCanvas(width, DESIGN_HEIGHT);
   const image = ctx.createImageData(width, DESIGN_HEIGHT);
-  const p = perspective(width);
   const colours = palette(hazeColour, haze);
   trunks.forEach((trunk, i) => paintTrunk(image.data, width, p, trunk, colours, seed + i * 17.3));
   ctx.putImageData(image, 0, 0);

@@ -16,9 +16,10 @@ const PETALS = ['#f4f0e0', '#f2d24a', '#f08aa8', '#c9b6f2'] as const;
 const STEM = '#3f7a35';
 const ROOT_STEPS = 120;
 /** Rows of the grass line: the sill hides everything below about row 242. */
-const GRASS_ROWS = [243, 247, 252] as const;
+const SHORT_GRASS_ROWS = [243, 247, 252] as const;
+/** Pasture chapters stand in longer grass: more rows, reaching higher up the page. */
+const TALL_GRASS_ROWS = [228, 233, 238, 243, 247, 252] as const;
 const GRASS_SPACING = 6;
-const FLOWERS = 16;
 const FLOWER_ROW_FROM = 226;
 const FLOWER_ROW_TO = 240;
 
@@ -53,9 +54,9 @@ function paintRoot(ctx: CanvasRenderingContext2D, spec: RootSpec, seed: number):
   }
 }
 
-function paintFlowers(ctx: CanvasRenderingContext2D, width: number): void {
+function paintFlowers(ctx: CanvasRenderingContext2D, width: number, count: number): void {
   const rand = seeded(61);
-  for (let i = 0; i < FLOWERS; i++) {
+  for (let i = 0; i < count; i++) {
     const x = Math.round(rand() * width);
     const y = Math.round(FLOWER_ROW_FROM + rand() * (FLOWER_ROW_TO - FLOWER_ROW_FROM));
     rect(ctx, STEM, x, y, 1, 7);
@@ -64,19 +65,26 @@ function paintFlowers(ctx: CanvasRenderingContext2D, width: number): void {
   }
 }
 
+export interface GroundSpec {
+  /** Whether the big mossy root lies across the bottom corners. */
+  roots: boolean;
+  flowers: number;
+  tallGrass: boolean;
+}
+
 export class Ground {
   private readonly front: HTMLCanvasElement;
   private readonly grass = buildGrass(GRASS_BODY, GRASS_TIP);
   private readonly tufts: { x: number; row: number; variant: number }[] = [];
 
-  constructor(width: number) {
+  constructor(width: number, spec: GroundSpec) {
     const { canvas, ctx } = memoryCanvas(width, DESIGN_HEIGHT);
-    paintRoot(ctx, { start: { x: -16, y: 248 }, bend: { x: width * 0.1, y: 190 }, end: { x: width * 0.31, y: 236 }, thick: 16, thin: 6 }, 71);
-    paintRoot(ctx, { start: { x: width + 16, y: 252 }, bend: { x: width * 0.9, y: 214 }, end: { x: width * 0.74, y: 242 }, thick: 11, thin: 4 }, 83);
-    paintFlowers(ctx, width);
+    if (spec.roots) paintRoot(ctx, { start: { x: -16, y: 248 }, bend: { x: width * 0.1, y: 190 }, end: { x: width * 0.31, y: 236 }, thick: 16, thin: 6 }, 71);
+    if (spec.roots) paintRoot(ctx, { start: { x: width + 16, y: 252 }, bend: { x: width * 0.9, y: 214 }, end: { x: width * 0.74, y: 242 }, thick: 11, thin: 4 }, 83);
+    paintFlowers(ctx, width, spec.flowers);
     this.front = canvas;
     const rand = seeded(97);
-    for (const row of GRASS_ROWS) {
+    for (const row of spec.tallGrass ? TALL_GRASS_ROWS : SHORT_GRASS_ROWS) {
       for (let x = -4; x < width + 4; x += GRASS_SPACING) {
         this.tufts.push({ x: x + rand() * GRASS_SPACING, row, variant: Math.floor(rand() * GRASS_VARIANTS) });
       }

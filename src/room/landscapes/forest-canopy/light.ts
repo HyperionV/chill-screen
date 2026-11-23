@@ -6,7 +6,7 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { bayer, drawHalo, seeded } from '../../gravity-falls/art-kit';
 import { breeze } from '../../wind';
-import { DESIGN_HEIGHT, GAP_HALF_H, GAP_HALF_W, GAP_ROW, SUN_ROW, inClockBand, perspective, type Perspective } from './layout';
+import { DESIGN_HEIGHT, SUN_ROW, inClockBand, type Perspective } from './layout';
 
 /** Angles of the shafts, measured from straight down (radians): more to the left, where there is more page. */
 const RAY_FROM = -0.95;
@@ -25,9 +25,11 @@ const BEAM_SWAY = 1.4;
 
 function buildRays(width: number, sunX: number, seed: number): HTMLCanvasElement {
   const { canvas, ctx } = memoryCanvas(width, DESIGN_HEIGHT);
+  /** With the sun on the left the shafts lean to the right instead. */
+  const flip = sunX < width / 2 ? -1 : 1;
   const rand = seeded(seed);
   const rays = Array.from({ length: RAYS_PER_SET }, (_, i) => ({
-    angle: RAY_FROM + ((i + rand() * 0.8) / RAYS_PER_SET) * (RAY_TO - RAY_FROM),
+    angle: flip * (RAY_FROM + ((i + rand() * 0.8) / RAYS_PER_SET) * (RAY_TO - RAY_FROM)),
     half: RAY_MIN_HALF + rand() * (RAY_MAX_HALF - RAY_MIN_HALF),
     power: 0.55 + rand() * 0.45,
     wobble: rand() * 6,
@@ -59,7 +61,6 @@ function buildRays(width: number, sunX: number, seed: number): HTMLCanvasElement
   return canvas;
 }
 
-const PATCHES = 22;
 const PATCH_ROW_FROM = 120;
 const PATCH_ROW_TO = 236;
 const PATCH_MIN_R = 5;
@@ -94,13 +95,14 @@ export class Sunlight {
   private readonly glints: Patch[] = [];
   private readonly motes: Mote[] = [];
 
-  constructor(width: number) {
-    this.p = perspective(width);
+  constructor(p: Perspective, patches: number) {
+    const { width } = p;
+    this.p = p;
     this.setA = buildRays(width, this.p.sunX, 7);
     this.setB = buildRays(width, this.p.sunX, 19);
     this.scratch = memoryCanvas(width, DESIGN_HEIGHT);
     const rand = seeded(41);
-    while (this.patches.length < PATCHES) {
+    while (this.patches.length < patches) {
       const x = rand() * width;
       const y = PATCH_ROW_FROM + rand() * (PATCH_ROW_TO - PATCH_ROW_FROM);
       if (inClockBand(this.p, x, y)) continue;
@@ -110,14 +112,14 @@ export class Sunlight {
       const angle = rand() * Math.PI * 2;
       const ring = GLINT_INNER + rand() * (GLINT_OUTER - GLINT_INNER);
       this.glints.push({
-        x: this.p.sunX + Math.cos(angle) * GAP_HALF_W * ring,
-        y: GAP_ROW + Math.sin(angle) * GAP_HALF_H * ring,
+        x: p.sunX + Math.cos(angle) * p.gapHalfW * ring,
+        y: p.gapRow + Math.sin(angle) * p.gapHalfH * ring,
         r: 0,
         phase: rand() * 6.28,
       });
     }
     for (let i = 0; i < MOTES; i++) {
-      this.motes.push({ x: rand() * (this.p.sunX + 30), y: rand() * DESIGN_HEIGHT, speed: 1.5 + rand() * 3, phase: rand() * 6.28 });
+      this.motes.push({ x: rand() * width, y: rand() * DESIGN_HEIGHT, speed: 1.5 + rand() * 3, phase: rand() * 6.28 });
     }
   }
 

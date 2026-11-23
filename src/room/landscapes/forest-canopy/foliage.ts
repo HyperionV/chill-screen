@@ -6,7 +6,8 @@
 import { memoryCanvas } from '../../../render/pixel-stage';
 import { ellipse, rect, seeded, mix } from '../../gravity-falls/art-kit';
 import { breeze, gust } from '../../wind';
-import { inClockBand, inSunGap, perspective, type Perspective } from './layout';
+import type { Point } from '../../gravity-falls/types';
+import { inSunGap, type Perspective } from './layout';
 
 interface LeafPalette {
   dark: string;
@@ -99,23 +100,68 @@ export interface Canopy {
 const FRAME_SHARE = 0.2;
 const NEAR_TOP_ROWS = 46;
 /** A roof of leaves high in the page, so the light comes down through gaps in it. */
-const CEILING_CLUMPS = 120;
 const CEILING_FROM = 0;
 const CEILING_TO = 105;
+/** Leaves gather this thickly round the tips of the boughs: clumps per tip, and how far they scatter. */
+/** Far crowns are small, so they get more clumps per tip to look full. */
+const CLUMPS_PER_TIP: Readonly<Record<Depth, number>> = { far: 2, mid: 1, near: 1 };
+const TIP_SCATTER = 9;
 
-export function buildCanopy(width: number): Canopy {
-  const p = perspective(width);
-  const far = variants(FAR_LEAVES, 8, 14, 11);
-  const mid = variants(MID_LEAVES, 9, 16, 23);
-  const near = variants(NEAR_LEAVES, 14, 26, 37);
+interface LeafSets {
+  far: HTMLCanvasElement[];
+  mid: HTMLCanvasElement[];
+  near: HTMLCanvasElement[];
+}
+
+let sets: LeafSets | null = null;
+
+/** The leaf pictures, made once and shared by every chapter. */
+function leafSets(): LeafSets {
+  sets ??= {
+    far: variants(FAR_LEAVES, 8, 14, 11),
+    mid: variants(MID_LEAVES, 9, 16, 23),
+    near: variants(NEAR_LEAVES, 14, 26, 37),
+  };
+  return sets;
+}
+
+export type Depth = 'far' | 'mid' | 'near';
+
+/** Leaf clumps gathered on the thin ends of boughs, at one depth. */
+export function clumpsAt(tips: readonly Point[], depth: Depth, amount: number, seed: number): Clump[] {
+  const rand = seeded(seed);
+  const sprites = leafSets()[depth];
+  const clumps: Clump[] = [];
+  for (const tip of tips) {
+    for (let i = 0; i < CLUMPS_PER_TIP[depth]; i++) {
+      clumps.push({
+        sprite: sprites[Math.floor(rand() * sprites.length)],
+        x: tip.x + (rand() - 0.5) * TIP_SCATTER * 2,
+        y: tip.y + (rand() - 0.5) * TIP_SCATTER * 2,
+        amount,
+      });
+    }
+  }
+  return clumps.sort((a, b) => a.y - b.y);
+}
+
+export interface FillerSpec {
+  /** Clumps in the roof of leaves high in the page. */
+  ceiling: number;
+  /** Extra far clumps spread over the upper page, for chapters with a thick canopy. */
+  distant: number;
+  /** Near clumps framing the edges of the page. */
+  frame: number;
+}
+
+/** Filler leaves between the oaks: a hazy far layer, a roof, and near clumps along the edges. */
+export function buildFiller(p: Perspective, spec: FillerSpec): Canopy {
+  const { far, mid, near } = leafSets();
   return {
-    far: scatter(p, { count: 130, rowFrom: -12, rowTo: 135, amount: 0.6, accept: (q, x, y) => !inSunGap(q, x, y) }, far, 101),
-    mid: [
-      ...scatter(p, { count: 110, rowFrom: -12, rowTo: 170, amount: 1.1, accept: (q, x, y) => !inSunGap(q, x, y) && !inClockBand(q, x, y) }, mid, 202),
-      ...scatter(p, { count: CEILING_CLUMPS, rowFrom: CEILING_FROM, rowTo: CEILING_TO, amount: 0.9, accept: (q, x, y) => !inSunGap(q, x, y) }, mid, 404),
-    ],
+    far: scatter(p, { count: spec.distant, rowFrom: -12, rowTo: 135, amount: 0.6, accept: (q, x, y) => !inSunGap(q, x, y) }, far, 101),
+    mid: scatter(p, { count: spec.ceiling, rowFrom: CEILING_FROM, rowTo: CEILING_TO, amount: 0.9, accept: (q, x, y) => !inSunGap(q, x, y) }, mid, 404),
     near: scatter(p, {
-      count: 44, rowFrom: -10, rowTo: 238, amount: 1.8,
+      count: spec.frame, rowFrom: -10, rowTo: 238, amount: 1.8,
       accept: (q, x, y) => !inSunGap(q, x, y) && (y < NEAR_TOP_ROWS || x < q.width * FRAME_SHARE || x > q.width * (1 - FRAME_SHARE)),
     }, near, 303),
   };
