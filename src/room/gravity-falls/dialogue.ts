@@ -1,5 +1,5 @@
 import { clamp } from '../../world/math';
-import { bubbleAlpha, drawBubble, layoutBubble, type BubbleLayout } from './bubble';
+import { bubbleAlpha, drawBubble, layoutBubble, maxInnerWidth, type BubbleLayout, type Projection } from './bubble';
 import type { Performer, Troupe } from './performer';
 import type { CastId, Point, Script } from './types';
 
@@ -99,14 +99,19 @@ export class Conversations {
   private turnsToFace = true;
   private lineIndex = 0;
   private lineSpeaker: Performer | null = null;
-  private lineLayout: BubbleLayout | null = null;
+  private lineText = '';
   private lineDuration = 0;
   private reactPending = false;
 
   private quipPerformer: Performer | null = null;
-  private quipLayout: BubbleLayout | null = null;
+  private quipText = '';
   private quipAge = 0;
   private quipDuration = 0;
+
+  /** Wrapped text of the line and quip on show: built on their first drawn frame (it needs a canvas) and again if the stage width changes. */
+  private lineLayout: BubbleLayout | null = null;
+  private quipLayout: BubbleLayout | null = null;
+  private layoutStageWidth = -1;
 
   private cameraX = 0;
   private viewWidth = 0;
@@ -160,6 +165,7 @@ export class Conversations {
     this.cameraX = view.cameraX;
     this.viewWidth = view.width;
     this.enabled = view.enabled;
+    this.troupe.setRadio(view.cameraX, view.width);
     if (this.revision !== this.troupe.revision) {
       this.revision = this.troupe.revision;
       this.cancel();
@@ -174,13 +180,20 @@ export class Conversations {
     }
   }
 
-  /** Call last, over everything else. */
-  drawBubbles(ctx: CanvasRenderingContext2D, cameraX: number, viewWidth: number): void {
-    if (this.phase === 'line' && this.lineSpeaker && this.lineLayout) {
-      this.drawFor(ctx, this.lineSpeaker, this.lineLayout, this.timer, this.lineDuration, cameraX, viewWidth);
+  /** Draws on the screen itself (stage pixels, see `Projection`); call from the view's overlay. */
+  drawBubbles(ctx: CanvasRenderingContext2D, projection: Projection, stageWidth: number): void {
+    if (this.layoutStageWidth !== stageWidth) {
+      this.layoutStageWidth = stageWidth;
+      this.lineLayout = null;
+      this.quipLayout = null;
     }
-    if (this.quipPerformer && this.quipLayout) {
-      this.drawFor(ctx, this.quipPerformer, this.quipLayout, this.quipAge, this.quipDuration, cameraX, viewWidth);
+    if (this.phase === 'line' && this.lineSpeaker) {
+      this.lineLayout ??= layoutBubble(ctx, this.lineText, maxInnerWidth(stageWidth));
+      this.drawFor(ctx, this.lineSpeaker, this.lineLayout, this.timer, this.lineDuration, projection, stageWidth);
+    }
+    if (this.quipPerformer) {
+      this.quipLayout ??= layoutBubble(ctx, this.quipText, maxInnerWidth(stageWidth));
+      this.drawFor(ctx, this.quipPerformer, this.quipLayout, this.quipAge, this.quipDuration, projection, stageWidth);
     }
   }
 
@@ -196,7 +209,8 @@ export class Conversations {
     }
     const text = lines[bag.take(this.rng, anything)];
     this.quipPerformer = performer;
-    this.quipLayout = layoutBubble(text, this.viewWidth);
+    this.quipText = text;
+    this.quipLayout = null;
     this.quipAge = 0;
     this.quipDuration = QUIP_TIME.base + QUIP_TIME.perChar * text.length;
     performer.emote(this.rng() < 0.5 ? 'surprise' : 'cheer');
@@ -214,12 +228,22 @@ export class Conversations {
     this.quipLayout = null;
   }
 
-  private drawFor(ctx: CanvasRenderingContext2D, who: Performer, layout: BubbleLayout, age: number, duration: number, cameraX: number, viewWidth: number): void {
+  private drawFor(
+    ctx: CanvasRenderingContext2D,
+    who: Performer,
+    layout: BubbleLayout,
+    age: number,
+    duration: number,
+    projection: Projection,
+    stageWidth: number,
+  ): void {
     const alpha = bubbleAlpha(age, duration);
     if (alpha <= 0) return;
     const revealed = Math.min(layout.chars, Math.floor(age * TYPE_RATE));
     const headTop = Math.round(who.drawY) - who.height;
-    drawBubble(ctx, layout, revealed, Math.round(who.drawX - cameraX), headTop, viewWidth, alpha);
+    const anchorX = (Math.round(who.drawX) - projection.cameraX) * projection.unit;
+    const anchorY = (headTop - projection.lift) * projection.unit;
+    drawBubble(ctx, layout, anchorX, anchorY, revealed, alpha, stageWidth);
   }
 
   private updateResting(step: number): void {
@@ -378,7 +402,8 @@ export class Conversations {
     }
     this.lineIndex = index;
     this.lineSpeaker = speaker;
-    this.lineLayout = layoutBubble(line.text, this.viewWidth);
+    this.lineText = line.text;
+    this.lineLayout = null;
     this.lineDuration = clamp(LINE_TIME.base + LINE_TIME.perChar * line.text.length, LINE_TIME.min, LINE_TIME.max);
     this.reactPending = line.react !== undefined;
     this.timer = 0;

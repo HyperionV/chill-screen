@@ -12,6 +12,13 @@ export type CastId = (typeof CAST_IDS)[number];
 export const PLACES = ['shack', 'woods', 'town', 'lake', 'hidden'] as const;
 export type PlaceId = (typeof PLACES)[number];
 
+/**
+ * Both views lift the whole picture (scenery, cast, speech) this many rows up before showing it. The window frame and
+ * the sill hide the top and bottom of the screen, so a scene designed on 270 rows is seen only between design rows
+ * 46 and 242 (screen rows 22 to 218). Keep everything that matters inside that band.
+ */
+export const SCENE_LIFT = 24;
+
 export type Facing = 1 | -1;
 
 /**

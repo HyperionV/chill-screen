@@ -1,11 +1,30 @@
 import { breeze } from '../wind';
 import { drawEmoteMark } from './bubble';
 import { CAST_IDS } from './types';
-import type { CastArt, CastId, CastSprites, Emote, Facing, IdleStyle, PerformerHome } from './types';
+import type { CastArt, CastId, CastSprites, Emote, Facing, IdleStyle, PerformerHome, Point } from './types';
 
 /** A character's body: where they stand, how they idle, walk and react. The Troupe holds them all and draws them. */
 
 const TAU = Math.PI * 2;
+
+/**
+ * The radio hides everything lower than this feet row inside this share of the view's width, so nobody walks across it:
+ * a walk that would cross goes over the top instead, along DETOUR_ROW (a higher row than the radio reaches).
+ */
+const RADIO_FROM = 0.385;
+const RADIO_TO = 0.625;
+const RADIO_ROW = 218;
+const DETOUR_ROW = 214;
+/** Walkers turn the corner this far outside the radio's edge. */
+const DETOUR_MARGIN = 6;
+/** A walk past the radio has at most three legs: to the near edge, along the top, on to the target. */
+const MAX_LEGS = 3;
+
+/** The part of the view the radio hides, in the view's own space; empty (right <= left) until the views say where it is. */
+export interface Keepout {
+  left: number;
+  right: number;
+}
 
 /** Walking speeds in stage pixels a second: a calm stroll for people, a quicker waddle for the pig, short steps for gnomes. */
 const PERSON_SPEED = 22;
@@ -94,6 +113,9 @@ export class Performer {
   private tx = 0;
   private ty = 0;
   private moving = false;
+  /** The legs of a walk past the radio, and how many are still to come after the one under way. */
+  private readonly legs: Point[] = Array.from({ length: MAX_LEGS }, () => ({ x: 0, y: 0 }));
+  private legsLeft = 0;
   /** The way to face once a walk ends (0 = keep facing the way walked). */
   private arriveFacing: Facing | 0 = 0;
   /** Journey only: keeps a fixed distance right of the camera's left edge. */
@@ -106,7 +128,7 @@ export class Performer {
   private offY = 0;
   private actPose = false;
 
-  constructor(id: CastId, sprites: CastSprites, home: PerformerHome, rng: () => number) {
+  constructor(id: CastId, sprites: CastSprites, home: PerformerHome, rng: () => number, private readonly keepout: Keepout) {
     this.id = id;
     this.sprites = sprites;
     this.homeSpot = home;
@@ -136,6 +158,7 @@ export class Performer {
     this.y = home.y;
     this.facing = home.facing;
     this.moving = false;
+    this.legsLeft = 0;
     this.arriveFacing = 0;
     this.following = home.followDx !== undefined;
     this.partyWalking = false;
@@ -215,15 +238,44 @@ export class Performer {
     if (this.emoteKind !== null) drawEmoteMark(ctx, this.emoteKind, px, top, this.emoteAge, EMOTE_SECONDS);
   }
 
+  /** Starts a walk to (x, y); a straight line that would pass behind the radio is replaced by the three legs of a detour above it. */
   private startMove(x: number, y: number): void {
     if (this.speed === 0) return;
+    this.moving = true;
+    this.legsLeft = 0;
+    if (!this.crossesRadio(x, y)) {
+      this.aim(x, y);
+      return;
+    }
+    const { left, right } = this.keepout;
+    const fromLeft = this.x < x;
+    const along = Math.min(DETOUR_ROW, this.y, y);
+    this.setLeg(0, fromLeft ? left - DETOUR_MARGIN : right + DETOUR_MARGIN, along);
+    this.setLeg(1, fromLeft ? right + DETOUR_MARGIN : left - DETOUR_MARGIN, along);
+    this.setLeg(2, x, y);
+    this.legsLeft = MAX_LEGS - 1;
+    this.aim(this.legs[0].x, this.legs[0].y);
+  }
+
+  private setLeg(index: number, x: number, y: number): void {
+    this.legs[index].x = x;
+    this.legs[index].y = y;
+  }
+
+  private aim(x: number, y: number): void {
     this.tx = x;
     this.ty = y;
-    this.moving = true;
     if (Math.abs(x - this.x) > 0.5) this.facing = x > this.x ? 1 : -1;
   }
 
-  /** One step of a straight-line walk. */
+  /** True when the line from here to (x, y) runs from one side of the radio to the other at a row the radio hides. */
+  private crossesRadio(x: number, y: number): boolean {
+    const { left, right } = this.keepout;
+    if (right <= left || Math.max(this.y, y) <= RADIO_ROW) return false;
+    return (this.x < left && x > right) || (x < left && this.x > right);
+  }
+
+  /** One step of a walk along its current leg; the last leg ends the walk. */
   private advance(dt: number): void {
     const dx = this.tx - this.x;
     const dy = this.ty - this.y;
@@ -232,6 +284,12 @@ export class Performer {
     if (dist <= step) {
       this.x = this.tx;
       this.y = this.ty;
+      if (this.legsLeft > 0) {
+        const next = this.legs[MAX_LEGS - this.legsLeft];
+        this.legsLeft--;
+        this.aim(next.x, next.y);
+        return;
+      }
       this.moving = false;
       if (this.arriveFacing !== 0) {
         this.facing = this.arriveFacing;
@@ -363,6 +421,8 @@ export class Troupe {
   private cameraX = 0;
   private isTravelling = false;
   private sceneCount = 0;
+  /** Shared with every performer: where the radio hides the ground, so walkers go over the top instead of behind it. */
+  private readonly keepout: Keepout = { left: 0, right: 0 };
 
   constructor(
     private readonly art: CastArt,
@@ -380,6 +440,12 @@ export class Troupe {
     return this.isTravelling;
   }
 
+  /** Tells the troupe where the radio is for a view whose left edge is at world x `cameraX` and which is `viewWidth` wide. */
+  setRadio(cameraX: number, viewWidth: number): void {
+    this.keepout.left = cameraX + viewWidth * RADIO_FROM;
+    this.keepout.right = cameraX + viewWidth * RADIO_TO;
+  }
+
   /** Replaces everyone: each home gets a performer (reusing the one made for that character before) standing at it. */
   setScene(homes: readonly PerformerHome[]): void {
     this.members.length = 0;
@@ -389,7 +455,7 @@ export class Troupe {
       let performer = this.pool.get(home.id);
       if (performer) performer.place(home);
       else {
-        performer = new Performer(home.id, this.art[home.id], home, this.rng);
+        performer = new Performer(home.id, this.art[home.id], home, this.rng, this.keepout);
         this.pool.set(home.id, performer);
       }
       this.members.push(performer);

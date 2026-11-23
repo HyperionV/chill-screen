@@ -1,6 +1,6 @@
 import { readJson, writeJson } from '../../store';
 import { clamp } from '../../world/math';
-import { bubbleAlpha, layoutBubble, type BubbleLayout } from './bubble';
+import { bubbleAlpha, layoutBubble, maxInnerWidth, type BubbleLayout } from './bubble';
 import {
   drawCard,
   drawDoor,
@@ -20,7 +20,6 @@ import {
   MSG_NOTE_TITLE,
   MSG_SCURRIED,
   NOTES,
-  encode,
   msgPageTitle,
   msgSymbolFound,
 } from './story';
@@ -64,11 +63,10 @@ const PEEK_CLICKABLE_RISE = 0.35;
 /** The eyes sit at the middle of the head, which is 6 rows tall; the clue's centre is the middle of the head. */
 const PEEK_HEAD_HALF = 3;
 
-/** The cards and toasts sit in the upper part of the view, clear of the clock: toast first, the card below it. */
-const TOAST_TOP = 0.05;
-const CARD_TOP = 0.12;
+/** The toast and the card sit in the upper part of the stage, above the clock: the toast first, the card below it. */
+const OVERLAY_TOP = 0.12;
 const OVERLAY_GAP = 3;
-const VIEW_MARGIN = 3;
+const STAGE_MARGIN = 3;
 
 const isIdList = (value: unknown): value is string[] => Array.isArray(value) && value.every((id) => typeof id === 'string');
 
@@ -96,13 +94,13 @@ export class MysteryBoard {
   private popupDuration = 0;
   private popupTitle = '';
   private popupPlain = '';
-  private popupCoded = '';
+  /** True for a note: its words start as a cipher and decode while it is read. */
+  private popupCiphered = false;
   private toastText = '';
   private toastStart = 0;
-  /** Wrapped text for the current popup and toast, rebuilt when either changes or the view width does. */
+  /** Wrapped text for the current popup and toast, rebuilt (on the first drawn frame) when either changes or the stage width does. */
   private layoutWidth = -1;
   private card: CardLayout | null = null;
-  private codedCard: CardLayout | null = null;
   private toastLayout: BubbleLayout | null = null;
 
   constructor() {
@@ -159,23 +157,22 @@ export class MysteryBoard {
     }
   }
 
-  /** Draws the toast and the card over everything. They sit in the upper part of the view, above the clock. */
-  drawOverlay(ctx: CanvasRenderingContext2D, viewWidth: number, viewHeight: number): void {
+  /** Draws the toast and the card on the screen itself (stage pixels), in the upper part of the stage, above the clock. */
+  drawOverlay(ctx: CanvasRenderingContext2D, stageWidth: number, stageHeight: number): void {
     if (this.toastText === '' && this.popupKind === 'none') return;
-    if (this.layoutWidth !== viewWidth) this.layOut(viewWidth);
-    let cardTop = Math.round(viewHeight * CARD_TOP);
+    if (this.layoutWidth !== stageWidth) this.layOut(ctx, stageWidth);
+    let cardTop = stageHeight * OVERLAY_TOP;
     if (this.toastText !== '' && this.toastLayout !== null) {
       const toast = this.toastLayout;
-      const y = Math.round(viewHeight * TOAST_TOP);
       const age = this.time - this.toastStart;
-      drawToast(ctx, toast, Math.max(VIEW_MARGIN, Math.round((viewWidth - toast.width) / 2)), y, bubbleAlpha(age, TOAST_SECONDS));
-      cardTop = Math.max(cardTop, y + toast.height + OVERLAY_GAP);
+      drawToast(ctx, toast, Math.max(STAGE_MARGIN, (stageWidth - toast.width) / 2), cardTop, bubbleAlpha(age, TOAST_SECONDS));
+      cardTop += toast.height + OVERLAY_GAP;
     }
-    if (this.popupKind !== 'none' && this.card !== null && this.codedCard !== null) {
+    if (this.popupKind !== 'none' && this.card !== null) {
       const age = this.time - this.popupStart;
-      const decoded = this.popupKind === 'note' ? Math.floor(clamp(age / NOTE_DECODE_SECONDS, 0, 1) * this.card.chars) : this.card.chars;
-      const x = Math.max(VIEW_MARGIN, Math.round((viewWidth - this.card.width) / 2));
-      drawCard(ctx, this.card, this.codedCard.lines, decoded, x, cardTop, bubbleAlpha(age, this.popupDuration));
+      const decoded = this.popupCiphered ? Math.floor(clamp(age / NOTE_DECODE_SECONDS, 0, 1) * this.card.chars) : this.card.chars;
+      const x = Math.max(STAGE_MARGIN, (stageWidth - this.card.width) / 2);
+      drawCard(ctx, this.card, decoded, x, cardTop, bubbleAlpha(age, this.popupDuration));
     }
   }
 
@@ -238,7 +235,7 @@ export class MysteryBoard {
       this.save();
     }
     const plain = NOTES[clue.place];
-    this.showPopup('note', MSG_NOTE_TITLE, plain, encode(plain), NOTE_DECODE_SECONDS + NOTE_HOLD_SECONDS);
+    this.showPopup('note', MSG_NOTE_TITLE, plain, true, NOTE_DECODE_SECONDS + NOTE_HOLD_SECONDS);
   }
 
   private openPage(clue: Clue): void {
@@ -247,7 +244,7 @@ export class MysteryBoard {
       this.save();
     }
     const text = JOURNAL[clue.place];
-    this.showPopup('page', msgPageTitle(clue.place), text, text, PAGE_CARD_SECONDS);
+    this.showPopup('page', msgPageTitle(clue.place), text, false, PAGE_CARD_SECONDS);
   }
 
   private scareOff(index: number): boolean {
@@ -278,22 +275,21 @@ export class MysteryBoard {
     this.layoutWidth = -1;
   }
 
-  private showPopup(kind: PopupKind, title: string, plain: string, coded: string, seconds: number): void {
+  private showPopup(kind: PopupKind, title: string, plain: string, ciphered: boolean, seconds: number): void {
     this.popupKind = kind;
     this.popupStart = this.time;
     this.popupDuration = seconds;
     this.popupTitle = title;
     this.popupPlain = plain;
-    this.popupCoded = coded;
+    this.popupCiphered = ciphered;
     this.layoutWidth = -1;
   }
 
-  /** Wraps the current toast and popup for a view this wide. Runs when one of them starts or the view is resized, never per frame. */
-  private layOut(viewWidth: number): void {
-    this.layoutWidth = viewWidth;
-    this.toastLayout = this.toastText === '' ? null : layoutBubble(this.toastText, viewWidth);
-    this.card = this.popupKind === 'none' ? null : layoutCard(this.popupTitle, this.popupPlain, viewWidth);
-    this.codedCard = this.popupKind === 'none' ? null : layoutCard(this.popupTitle, this.popupCoded, viewWidth);
+  /** Wraps the current toast and popup for a stage this wide. Runs when one of them starts or the stage is resized, never per frame. */
+  private layOut(ctx: CanvasRenderingContext2D, stageWidth: number): void {
+    this.layoutWidth = stageWidth;
+    this.toastLayout = this.toastText === '' ? null : layoutBubble(ctx, this.toastText, maxInnerWidth(stageWidth));
+    this.card = this.popupKind === 'none' ? null : layoutCard(ctx, this.popupTitle, this.popupPlain, this.popupCiphered, stageWidth);
   }
 
   /**

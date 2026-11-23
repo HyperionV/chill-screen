@@ -1,32 +1,45 @@
+import { FONTS } from '../../scene/typography';
 import { clamp } from '../../world/math';
-import { drawText, plainText, textWidth } from '../../render/pixel-font';
+import { drawText } from '../../render/pixel-font';
 import type { Emote } from './types';
 
-/** The pixels of a speech bubble and of the small marks that float over a head. Pure drawing: no state, no timers. */
+/**
+ * The speech bubble and the small marks that float over a head. The bubble is drawn on the screen itself in the app's normal
+ * font (units are stage pixels, see `OutsideView.drawOverlay`); the marks stay pixel glyphs in the stage picture.
+ * Layout (wrapping, measuring) runs once when a line starts; drawing allocates nothing.
+ */
 
 const INK = '#1c2036';
-const PAPER = '#fbf4e2';
+const PAPER = '#fdf7e6';
 const OUTLINE = '#1c2036';
-const SHADOW = 'rgba(20, 24, 44, 0.35)';
+const SHADOW = 'rgba(20, 24, 44, 0.3)';
 const MARK_COLOR = '#ffd75e';
 const MARK_SHADOW = '#1c2036';
 
-/** The pixel font is 5 rows tall with a 4 pixel step per letter; lines sit 7 pixels apart so they never touch. */
-const GLYPH_HEIGHT = 5;
-const LETTER_STEP = 4;
-const LINE_HEIGHT = 7;
-const PADDING = 2;
-const BORDER = 1;
-/** Text wraps at this many pixels wide (or a little less than the view on a narrow phone view). */
-const MAX_INNER_WIDTH = 84;
-const NARROW_VIEW_MARGIN = 16;
-const MIN_INNER_WIDTH = 11;
-/** Space kept between a bubble and the edge of the view. */
-const VIEW_MARGIN = 3;
-/** The bubble body ends this far above the head; the tail covers 3 of those pixels. */
-const HEAD_GAP = 6;
-/** Keeps the tail clear of the rounded corners. */
-const TAIL_INSET = 4;
+/** Text metrics shared by every box that holds words (bubble, toast, card), in stage pixels. */
+export const TEXT_SIZE = 5.8;
+export const TEXT_LINE_HEIGHT = 7.6;
+/** Where the baseline sits below the top of a text line, as a share of the font size (the letters' height without descenders). */
+export const TEXT_BASELINE_SHARE = 0.8;
+
+export const PAD_X = 3;
+export const PAD_Y = 2.4;
+const RADIUS = 2.4;
+const OUTLINE_WIDTH = 0.7;
+const SHADOW_DROP = 1;
+/** The widest text line in a bubble, and its share of a narrow (phone) stage. */
+const MAX_INNER_WIDTH = 124;
+const MAX_INNER_SHARE = 0.62;
+/** Space kept between a bubble and the side or top of the stage. */
+const STAGE_MARGIN = 3;
+/** The window frame covers this share of the stage at each side, so a bubble must stay inside the glass. */
+const GLASS_INSET = 0.065;
+/** The bubble body ends this far above the head; the tail fills the gap. */
+const HEAD_GAP = 3.4;
+const TAIL_HEIGHT = 3.2;
+const TAIL_HALF_WIDTH = 2.2;
+/** The tail tip may lean this far from the tail's base, so a bubble pushed sideways by the stage edge still points at the speaker. */
+const TAIL_SLANT = 7;
 const POP_IN_SECONDS = 0.15;
 const FADE_OUT_SECONDS = 0.2;
 
@@ -47,36 +60,55 @@ const EMOTE_MARKS: Readonly<Record<Emote, string>> = {
   shrug: '...',
 };
 
+/** Where a view's own pixels land on the stage: stageX = (worldX - cameraX) * unit, stageY = (worldY - lift) * unit. */
+export interface Projection {
+  unit: number;
+  lift: number;
+  cameraX: number;
+}
+
+/** The two canvas font settings used for all overlay words: the app's own UI font, found once. */
+interface OverlayFonts {
+  readonly text: string;
+  readonly title: string;
+}
+
+let fonts: OverlayFonts | null = null;
+
+export function overlayFonts(): OverlayFonts {
+  if (fonts === null) {
+    const family = FONTS.clean.family;
+    fonts = { text: `600 ${TEXT_SIZE}px ${family}`, title: `700 ${TEXT_SIZE}px ${family}` };
+  }
+  return fonts;
+}
+
 /** A bubble's wrapped text and size, worked out once when a line starts (not every frame). */
 export interface BubbleLayout {
   readonly lines: readonly string[];
   /** Letters in all lines together: the most a typing reveal can show. */
   readonly chars: number;
-  /** Outer size in pixels, border included, tail not included. */
+  /** Outer size in stage pixels, tail not included. */
   readonly width: number;
   readonly height: number;
 }
 
-/** Splits already-plain text into lines of at most `maxChars` letters; a word longer than a line is cut. */
-function wrap(text: string, maxChars: number): string[] {
+/** The widest a line of speech may be on a stage this wide. */
+export function maxInnerWidth(stageWidth: number): number {
+  return Math.min(MAX_INNER_WIDTH, stageWidth * MAX_INNER_SHARE, stageWidth * (1 - 2 * GLASS_INSET) - 12);
+}
+
+/** Splits text into lines no wider than `maxWidth` in the font already set on `ctx`; a single word wider than that stays whole. */
+export function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
   const lines: string[] = [];
   let current = '';
   for (const word of text.split(' ')) {
     if (word === '') continue;
-    let rest = word;
-    while (rest.length > maxChars) {
-      if (current !== '') {
-        lines.push(current);
-        current = '';
-      }
-      lines.push(rest.slice(0, maxChars));
-      rest = rest.slice(maxChars);
-    }
-    if (current === '') current = rest;
-    else if (current.length + 1 + rest.length <= maxChars) current += ` ${rest}`;
+    const joined = current === '' ? word : `${current} ${word}`;
+    if (current === '' || ctx.measureText(joined).width <= maxWidth) current = joined;
     else {
       lines.push(current);
-      current = rest;
+      current = word;
     }
   }
   if (current !== '') lines.push(current);
@@ -84,18 +116,19 @@ function wrap(text: string, maxChars: number): string[] {
   return lines;
 }
 
-/** Wraps and measures a spoken line. All text goes through `plainText` here, so the font never meets a letter it lacks. */
-export function layoutBubble(text: string, viewWidth: number): BubbleLayout {
-  const inner = Math.max(MIN_INNER_WIDTH, Math.min(MAX_INNER_WIDTH, viewWidth - NARROW_VIEW_MARGIN));
-  const lines = wrap(plainText(text), Math.floor((inner + 1) / LETTER_STEP));
+/** Wraps and measures a spoken line for a bubble whose text may be `maxWidth` wide. */
+export function layoutBubble(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): BubbleLayout {
+  ctx.save();
+  ctx.font = overlayFonts().text;
+  const lines = wrapText(ctx, text, maxWidth);
   let widest = 0;
   let chars = 0;
   for (const line of lines) {
-    widest = Math.max(widest, textWidth(line));
+    widest = Math.max(widest, ctx.measureText(line).width);
     chars += line.length;
   }
-  const frame = 2 * (PADDING + BORDER);
-  return { lines, chars, width: widest + frame, height: (lines.length - 1) * LINE_HEIGHT + GLYPH_HEIGHT + frame };
+  ctx.restore();
+  return { lines, chars, width: widest + 2 * PAD_X, height: 2 * PAD_Y + (lines.length - 1) * TEXT_LINE_HEIGHT + TEXT_SIZE };
 }
 
 /** How opaque a bubble is `age` seconds after it appeared: quick fade in, quick fade out at the end. */
@@ -103,60 +136,59 @@ export function bubbleAlpha(age: number, duration: number): number {
   return clamp(Math.min(age / POP_IN_SECONDS, (duration - age) / FADE_OUT_SECONDS), 0, 1);
 }
 
-/** A filled box with its 4 corner pixels left out. */
-function fillRounded(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string): void {
-  ctx.fillStyle = color;
-  ctx.fillRect(x + 1, y, w - 2, h);
-  ctx.fillRect(x, y + 1, 1, h - 2);
-  ctx.fillRect(x + w - 1, y + 1, 1, h - 2);
-}
-
-/** The small pointer under the bubble: 3 rows, narrowing to one pixel, opening into the bubble's bottom border. */
-function drawTail(ctx: CanvasRenderingContext2D, tailX: number, bodyBottom: number): void {
-  ctx.fillStyle = PAPER;
-  ctx.fillRect(tailX - 1, bodyBottom - 1, 3, 1);
-  ctx.fillRect(tailX - 1, bodyBottom, 3, 1);
-  ctx.fillRect(tailX, bodyBottom + 1, 1, 1);
-  ctx.fillStyle = OUTLINE;
-  ctx.fillRect(tailX - 2, bodyBottom, 1, 1);
-  ctx.fillRect(tailX + 2, bodyBottom, 1, 1);
-  ctx.fillRect(tailX - 1, bodyBottom + 1, 1, 1);
-  ctx.fillRect(tailX + 1, bodyBottom + 1, 1, 1);
-  ctx.fillRect(tailX, bodyBottom + 2, 1, 1);
-}
-
 /**
- * Draws a bubble over a speaker. `anchorX` is the speaker's centre and `headTopY` the top of their head, both in view pixels.
- * The box stays inside the view; the tail keeps pointing at the speaker. `revealed` is how many letters have been typed so far.
+ * Draws a bubble over a speaker. `anchorX` is the speaker's centre and `anchorY` the top of their head, both in stage pixels.
+ * The box stays inside the stage; the tail keeps pointing at the speaker. `revealed` is how many letters have been typed so far.
  */
 export function drawBubble(
   ctx: CanvasRenderingContext2D,
   layout: BubbleLayout,
-  revealed: number,
   anchorX: number,
-  headTopY: number,
-  viewWidth: number,
+  anchorY: number,
+  revealed: number,
   alpha: number,
+  stageWidth: number,
 ): void {
   const { width, height, lines } = layout;
-  const x = clamp(Math.round(anchorX - width / 2), VIEW_MARGIN, viewWidth - VIEW_MARGIN - width);
-  const bodyBottom = Math.round(headTopY) - HEAD_GAP;
-  const y = Math.max(VIEW_MARGIN, bodyBottom - height);
-  const tailX = clamp(Math.round(anchorX), x + TAIL_INSET, x + width - 1 - TAIL_INSET);
-  const previousAlpha = ctx.globalAlpha;
-  ctx.globalAlpha = previousAlpha * alpha;
-  fillRounded(ctx, x + 1, y + 1, width, height, SHADOW);
-  fillRounded(ctx, x, y, width, height, OUTLINE);
-  fillRounded(ctx, x + BORDER, y + BORDER, width - 2 * BORDER, height - 2 * BORDER, PAPER);
-  drawTail(ctx, tailX, y + height);
+  const edge = STAGE_MARGIN + stageWidth * GLASS_INSET;
+  const x = clamp(anchorX - width / 2, edge, stageWidth - edge - width);
+  const y = Math.max(STAGE_MARGIN, anchorY - HEAD_GAP - height);
+  const bottom = y + height;
+  const tailBase = clamp(anchorX, x + RADIUS + TAIL_HALF_WIDTH, x + width - RADIUS - TAIL_HALF_WIDTH);
+  const tailTip = clamp(anchorX, tailBase - TAIL_SLANT, tailBase + TAIL_SLANT);
+  ctx.save();
+  ctx.globalAlpha *= alpha;
+  ctx.fillStyle = SHADOW;
+  ctx.beginPath();
+  ctx.roundRect(x, y + SHADOW_DROP, width, height, RADIUS);
+  ctx.fill();
+  ctx.fillStyle = PAPER;
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = OUTLINE_WIDTH;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, RADIUS);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(tailBase - TAIL_HALF_WIDTH, bottom);
+  ctx.lineTo(tailTip, bottom + TAIL_HEIGHT);
+  ctx.lineTo(tailBase + TAIL_HALF_WIDTH, bottom);
+  ctx.fill();
+  ctx.stroke();
+  const seam = OUTLINE_WIDTH / 2;
+  ctx.fillRect(tailBase - TAIL_HALF_WIDTH + seam, bottom - seam, 2 * (TAIL_HALF_WIDTH - seam), OUTLINE_WIDTH);
+  ctx.fillStyle = INK;
+  ctx.font = overlayFonts().text;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
   let left = revealed;
   for (let i = 0; i < lines.length && left > 0; i++) {
     const line = lines[i];
-    const shown = left >= line.length ? line : line.slice(0, left);
-    drawText(ctx, shown, x + BORDER + PADDING, y + BORDER + PADDING + i * LINE_HEIGHT, INK);
+    ctx.fillText(left >= line.length ? line : line.slice(0, left), x + PAD_X, y + PAD_Y + TEXT_SIZE * TEXT_BASELINE_SHARE + i * TEXT_LINE_HEIGHT);
     left -= line.length;
   }
-  ctx.globalAlpha = previousAlpha;
+  ctx.restore();
 }
 
 /**

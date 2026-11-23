@@ -150,6 +150,7 @@ export class WindowScene {
     this.stage.overlay((screen) => {
       if (framed) this.window.clipToGlass(screen);
       this.clock.draw(screen, w / 2, h * CLOCK_Y, h * CLOCK_SIZE, look.tint, this.stage.scale);
+      this.view.drawOverlay?.(screen, w, h);
       this.rain.drawGlass(screen, dt, this.rainLevel, look);
     });
     // The radio stands in the room, in front of the glass and any rain on it.

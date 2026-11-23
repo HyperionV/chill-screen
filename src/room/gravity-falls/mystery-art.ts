@@ -1,12 +1,23 @@
 import { clamp } from '../../world/math';
 import { drawText, textWidth } from '../../render/pixel-font';
 import { breeze } from '../wind';
-import { layoutBubble, type BubbleLayout } from './bubble';
+import {
+  PAD_X,
+  PAD_Y,
+  TEXT_BASELINE_SHARE,
+  TEXT_LINE_HEIGHT,
+  TEXT_SIZE,
+  overlayFonts,
+  wrapText,
+  type BubbleLayout,
+} from './bubble';
+import { encode } from './story';
 import type { PlaceId } from './types';
 
 /**
- * The pictures of the mystery: carved symbols, folded notes, journal pages, peeking eyes, the round hidden door,
- * and the paper card and toast that show text. Pure drawing from the values it is given: no state, no timers.
+ * The pictures of the mystery: carved symbols, folded notes, journal pages, peeking eyes and the round hidden door
+ * (all pixel art in the stage picture), and the paper card and toast that show text (drawn on the screen itself in the
+ * app's normal font). Pure drawing from the values it is given: no state, no timers.
  */
 
 const GOLD = '#ffd75e';
@@ -117,28 +128,37 @@ const DOOR_GLOW_NIGHT = 0.2;
 
 export type DoorMode = 'locked' | 'armed' | 'open';
 
-/** The paper card: a title, a dotted rule and the text below it. */
-const CARD_PAPER = '#f3e6c4';
+/** The paper card: a title, a thin rule and the text below it. */
+const CARD_PAPER = '#fbf1d4';
 const CARD_OUTLINE = '#3b2a1c';
-const CARD_SHADOW = 'rgba(20, 24, 44, 0.35)';
-const CARD_FOLD = '#d8c28a';
-const CARD_TITLE = '#a2641a';
+const CARD_SHADOW = 'rgba(20, 24, 44, 0.3)';
+const CARD_TITLE = '#8f5513';
 const CARD_RULE = '#c9b88e';
 const CARD_INK = '#1c2036';
 const CARD_CODED_INK = '#8a6a2a';
-/** The pixel font steps 4 pixels per letter and lines sit 7 apart (the speech bubble's own spacing). */
-const LETTER_STEP = 4;
-const LINE_HEIGHT = 7;
-const CARD_EDGE = 3;
-const TITLE_BLOCK = 8;
-const TEXT_TOP = CARD_EDGE + TITLE_BLOCK;
-const RULE_Y = CARD_EDGE + 6;
-const FOLD_SIZE = 3;
-const FRAME = 2 * CARD_EDGE;
+const CARD_RADIUS = 1.8;
+const CARD_OUTLINE_WIDTH = 0.7;
+const CARD_RULE_WIDTH = 0.4;
+const CARD_SHADOW_DROP = 1;
+const CARD_PAD_X = 4;
+const CARD_PAD_TOP = 3;
+const CARD_PAD_BOTTOM = 3;
+/** Where the rule and the first line of text sit below the top of the card. */
+const CARD_RULE_Y = 9.6;
+const CARD_BODY_TOP = 11.8;
+/** The widest a card may be: a note or short page, and a long journal page (which then needs no more than a few lines). */
+const CARD_WIDTH = 112;
+const CARD_WIDE_WIDTH = 150;
+const CARD_WIDE_AFTER_LINES = 3;
+/** Cards never come closer than this to the side of the stage. */
+const CARD_STAGE_MARGIN = 3;
+/** The pixel font (used for the cipher) is 5 rows tall, 3 wide and steps 4 pixels per letter. */
+const PIXEL_GLYPH_HEIGHT = 5;
 
 const TOAST_FILL = '#1c2036';
 const TOAST_OUTLINE = '#5a4a22';
-const TOAST_EDGE = 3;
+const TOAST_RADIUS = 2.4;
+const TOAST_OUTLINE_WIDTH = 0.7;
 
 /** Fills a box in a day colour and, as the night grows, a night colour over it, without building any colour text per frame. */
 function fillMix(
@@ -444,74 +464,121 @@ export function drawDoor(
 export interface CardLayout {
   readonly title: string;
   readonly lines: readonly string[];
+  /** What each line looks like in code (the same lines again for a page that is not coded). */
+  readonly coded: readonly string[];
   /** Letters in all lines together. */
   readonly chars: number;
   readonly width: number;
   readonly height: number;
 }
 
-/** Wraps `text` (the speech bubble's own wrapping) under `title`; the card is as wide as its widest line or the title. */
-export function layoutCard(title: string, text: string, viewWidth: number): CardLayout {
-  const body = layoutBubble(text, viewWidth);
+/**
+ * Wraps `text` under `title` for a stage `stageWidth` wide. A long text gets the wider card. With `ciphered` the
+ * coded form of every line is worked out too, so a note can decode letter by letter without re-wrapping.
+ */
+export function layoutCard(ctx: CanvasRenderingContext2D, title: string, text: string, ciphered: boolean, stageWidth: number): CardLayout {
+  const fonts = overlayFonts();
+  ctx.save();
+  ctx.font = fonts.text;
+  const inner = (outer: number): number => Math.min(outer, stageWidth - 2 * CARD_STAGE_MARGIN) - 2 * CARD_PAD_X;
+  let lines = wrapText(ctx, text, inner(CARD_WIDTH));
+  if (lines.length > CARD_WIDE_AFTER_LINES) lines = wrapText(ctx, text, inner(CARD_WIDE_WIDTH));
+  const coded = ciphered ? lines.map(encode) : lines;
+  let widest = 0;
+  let chars = 0;
+  for (let i = 0; i < lines.length; i++) {
+    widest = Math.max(widest, ctx.measureText(lines[i]).width, ciphered ? textWidth(coded[i]) : 0);
+    chars += lines[i].length;
+  }
+  ctx.font = fonts.title;
+  widest = Math.max(widest, ctx.measureText(title).width);
+  ctx.restore();
   return {
     title,
-    lines: body.lines,
-    chars: body.chars,
-    width: Math.max(body.width, textWidth(title) + FRAME),
-    height: body.height + TITLE_BLOCK,
+    lines,
+    coded,
+    chars,
+    width: widest + 2 * CARD_PAD_X,
+    height: CARD_BODY_TOP + (lines.length - 1) * TEXT_LINE_HEIGHT + TEXT_SIZE + CARD_PAD_BOTTOM,
   };
 }
 
+function cardPath(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number): void {
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, CARD_RADIUS);
+}
+
 /**
- * Draws a card with its top-left at (x, y). The first `decoded` letters show as `card.lines` in dark ink and the rest as the
- * matching letters of `coded` in brown, so a note can turn from code into plain words; a page passes `coded === card.lines`.
+ * Draws a card with its top-left at (x, y) in stage pixels. The first `decoded` letters show as plain text in the normal
+ * font and the rest as the card's coded letters in the pixel font, so a note turns from cipher into words; a card that is
+ * not coded passes `decoded === card.chars`.
  */
-export function drawCard(ctx: CanvasRenderingContext2D, card: CardLayout, coded: readonly string[], decoded: number, x: number, y: number, alpha: number): void {
-  const { width, height, lines } = card;
-  const previous = ctx.globalAlpha;
-  ctx.globalAlpha = previous * alpha;
+export function drawCard(ctx: CanvasRenderingContext2D, card: CardLayout, decoded: number, x: number, y: number, alpha: number): void {
+  const { width, height, lines, coded } = card;
+  const fonts = overlayFonts();
+  ctx.save();
+  ctx.globalAlpha *= alpha;
   ctx.fillStyle = CARD_SHADOW;
-  ctx.fillRect(x + 1, y + 1, width, height);
-  ctx.fillStyle = CARD_OUTLINE;
-  ctx.fillRect(x, y, width, height);
+  cardPath(ctx, x, y + CARD_SHADOW_DROP, width, height);
+  ctx.fill();
   ctx.fillStyle = CARD_PAPER;
-  ctx.fillRect(x + 1, y + 1, width - 2, height - 2);
-  ctx.fillStyle = CARD_FOLD;
-  ctx.fillRect(x + width - 1 - FOLD_SIZE, y + 1, FOLD_SIZE, FOLD_SIZE);
-  drawText(ctx, card.title, x + CARD_EDGE, y + CARD_EDGE, CARD_TITLE);
-  ctx.fillStyle = CARD_RULE;
-  for (let px = x + CARD_EDGE; px < x + width - CARD_EDGE; px += 2) ctx.fillRect(px, y + RULE_Y, 1, 1);
+  ctx.strokeStyle = CARD_OUTLINE;
+  ctx.lineWidth = CARD_OUTLINE_WIDTH;
+  cardPath(ctx, x, y, width, height);
+  ctx.fill();
+  ctx.stroke();
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.font = fonts.title;
+  ctx.fillStyle = CARD_TITLE;
+  ctx.fillText(card.title, x + CARD_PAD_X, y + CARD_PAD_TOP + TEXT_SIZE * TEXT_BASELINE_SHARE);
+  ctx.strokeStyle = CARD_RULE;
+  ctx.lineWidth = CARD_RULE_WIDTH;
+  ctx.beginPath();
+  ctx.moveTo(x + CARD_PAD_X, y + CARD_RULE_Y);
+  ctx.lineTo(x + width - CARD_PAD_X, y + CARD_RULE_Y);
+  ctx.stroke();
+  ctx.font = fonts.text;
   let seen = 0;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const lineY = y + TEXT_TOP + i * LINE_HEIGHT;
-    const lineX = x + CARD_EDGE;
+    const lineX = x + CARD_PAD_X;
+    const baseline = y + CARD_BODY_TOP + TEXT_SIZE * TEXT_BASELINE_SHARE + i * TEXT_LINE_HEIGHT;
     const done = decoded - seen;
-    if (done >= line.length) drawText(ctx, line, lineX, lineY, CARD_INK);
-    else if (done <= 0) drawText(ctx, coded[i], lineX, lineY, CARD_CODED_INK);
-    else {
-      const code = coded[i];
-      for (let j = 0; j < line.length; j++) {
-        if (j < done) drawText(ctx, line[j], lineX + j * LETTER_STEP, lineY, CARD_INK);
-        else drawText(ctx, code[j], lineX + j * LETTER_STEP, lineY, CARD_CODED_INK);
-      }
-    }
     seen += line.length;
+    if (done >= line.length) {
+      ctx.fillStyle = CARD_INK;
+      ctx.fillText(line, lineX, baseline);
+      continue;
+    }
+    let codedX = lineX;
+    if (done > 0) {
+      const plain = line.slice(0, done);
+      ctx.fillStyle = CARD_INK;
+      ctx.fillText(plain, lineX, baseline);
+      codedX += ctx.measureText(plain).width;
+    }
+    drawText(ctx, done > 0 ? coded[i].slice(done) : coded[i], Math.round(codedX), Math.round(baseline - PIXEL_GLYPH_HEIGHT), CARD_CODED_INK);
   }
-  ctx.globalAlpha = previous;
+  ctx.restore();
 }
 
-/** A small dark box of gold text for short messages, with its top-left at (x, y). */
+/** A small dark box of gold text for short messages, with its top-left at (x, y) in stage pixels. */
 export function drawToast(ctx: CanvasRenderingContext2D, layout: BubbleLayout, x: number, y: number, alpha: number): void {
   const { width, height, lines } = layout;
-  const previous = ctx.globalAlpha;
-  ctx.globalAlpha = previous * alpha;
-  ctx.fillStyle = TOAST_OUTLINE;
-  ctx.fillRect(x + 1, y, width - 2, height);
-  ctx.fillRect(x, y + 1, width, height - 2);
+  ctx.save();
+  ctx.globalAlpha *= alpha;
   ctx.fillStyle = TOAST_FILL;
-  ctx.fillRect(x + 2, y + 1, width - 4, height - 2);
-  ctx.fillRect(x + 1, y + 2, width - 2, height - 4);
-  for (let i = 0; i < lines.length; i++) drawText(ctx, lines[i], x + TOAST_EDGE, y + TOAST_EDGE + i * LINE_HEIGHT, GOLD);
-  ctx.globalAlpha = previous;
+  ctx.strokeStyle = TOAST_OUTLINE;
+  ctx.lineWidth = TOAST_OUTLINE_WIDTH;
+  ctx.beginPath();
+  ctx.roundRect(x, y, width, height, TOAST_RADIUS);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = GOLD;
+  ctx.font = overlayFonts().text;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x + PAD_X, y + PAD_Y + TEXT_SIZE * TEXT_BASELINE_SHARE + i * TEXT_LINE_HEIGHT);
+  ctx.restore();
 }
