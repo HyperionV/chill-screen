@@ -2,8 +2,8 @@ import { css, mix, type RGB } from '../../../render/color';
 import type { Look } from '../../../wallpapers/look';
 import type { SkyState } from '../../sky';
 
-/** Where the sky meets the land, as a share of the height: hills and rooftops hide the true horizon, so it sits low. */
-export const SKY_HORIZON = 0.5;
+/** Where the sky meets the land, as a share of the height: the sky is painted down to here, so it must reach below the lowest hills (the town's ridges end near row 194 of 270) or a dark band shows between them. */
+export const SKY_HORIZON = 0.72;
 
 /** The average colour of the land by day, and the cool moonlit blue it is pulled towards at night. */
 const LAND_LIGHT: RGB = [156, 164, 132];
