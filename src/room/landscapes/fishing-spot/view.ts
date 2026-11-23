@@ -54,7 +54,7 @@ export class FishingSpotView implements OutsideView {
   private unit = 1;
   private layout: SceneLayout = computeLayout(480, 270, 1);
 
-  private readonly route = new Route('landscape-fishing-spot', CHAPTERS);
+  readonly route = new Route('landscape-fishing-spot', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly fog = new FogLayer();

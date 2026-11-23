@@ -1,6 +1,7 @@
 import { Ambience } from '../audio/ambience';
 import { PACES, type Pace } from '../room/journey/pace';
 import type { JourneyView } from '../room/journeys/journey-view';
+import type { Route } from '../room/journeys/route';
 import { DEFAULT_JOURNEY, JOURNEYS, JOURNEY_ENTRIES, type JourneyId } from '../room/journeys/registry';
 import type { DeckControls } from '../room/music-deck';
 import { NightSky } from '../room/night-sky';
@@ -109,6 +110,13 @@ export class SceneSwitch {
   /** The scene actually on screen. Wallpapers fall back to the journey until at least one is added. */
   get showing(): SceneKind {
     return this.settings.scene === 'wallpapers' && !this.wallpapers.length ? 'journey' : this.settings.scene;
+  }
+
+  /** The chapters of what is on screen, for the Settings panel's phase strip; null when it has none (wallpapers, aquarium, the wildwood road). */
+  get route(): Route | null {
+    if (this.showing === 'landscape') return this.landscapeView().route ?? null;
+    if (this.showing === 'journey') return this.journeyView().route ?? null;
+    return null;
   }
 
   get frameCost(): number {

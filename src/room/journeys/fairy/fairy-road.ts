@@ -56,7 +56,7 @@ export class FairyRoad implements JourneyView {
   private prevRouteSeconds = -1;
   private prevScroll = 0;
 
-  private readonly route = new Route('fairy', CHAPTERS);
+  readonly route = new Route('fairy', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly land = memoryCanvas(1, 1);

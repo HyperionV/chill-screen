@@ -16,7 +16,7 @@ import { Weather } from './weather';
 type Surface = ReturnType<typeof memoryCanvas>;
 
 export class NightBus implements JourneyView {
-  private readonly route = new Route('night-bus', CHAPTERS);
+  readonly route = new Route('night-bus', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly sky: BusSky;
   private readonly weather = new Weather();

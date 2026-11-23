@@ -29,7 +29,7 @@ export class PineForest implements OutsideView {
   private unit = 1;
   private activeScene = 0;
   private readonly pointer = { x: 0, y: 0 };
-  private readonly route = new Route('landscape-pine-forest', CHAPTERS);
+  readonly route = new Route('landscape-pine-forest', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly sky = memoryCanvas(1, 1);

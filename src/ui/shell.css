@@ -391,6 +391,68 @@ body[data-mode="business"] .focus-float {
   color: var(--text);
 }
 
+/* The phases of the picked scene: a row of names that slides sideways, the current one with its padlock. */
+.phase-track {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+
+.phase-track::-webkit-scrollbar {
+  display: none;
+}
+
+.phase {
+  flex: none;
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.24);
+  scroll-snap-align: center;
+}
+
+.phase-name,
+.phase-lock {
+  border: 0;
+  background: none;
+  color: var(--muted);
+}
+
+.phase-name {
+  padding: 6px 10px;
+  font-size: calc(17px * var(--content-scale, 1));
+  white-space: nowrap;
+}
+
+.phase-name:hover {
+  color: var(--text);
+}
+
+.phase.current {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.phase.current .phase-name {
+  color: var(--text);
+  padding-right: 4px;
+}
+
+.phase-lock {
+  display: none;
+  padding: 6px 8px 6px 4px;
+  color: var(--faint);
+}
+
+.phase.current .phase-lock {
+  display: inline-flex;
+}
+
+.phase.locked .phase-lock {
+  color: var(--accent);
+}
+
 .choice-name {
   font-size: calc(20px * var(--content-scale, 1));
 }

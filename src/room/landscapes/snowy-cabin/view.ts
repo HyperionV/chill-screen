@@ -38,7 +38,7 @@ export class SnowyCabinView implements OutsideView {
   private h = 0;
   private unit = 1;
 
-  private readonly route = new Route(ROUTE_ID, CHAPTERS);
+  readonly route = new Route(ROUTE_ID, CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly land = memoryCanvas(1, 1);

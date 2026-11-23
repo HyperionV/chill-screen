@@ -47,7 +47,7 @@ export class SeasideView implements OutsideView {
 
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [128, 128, 128] };
   private readonly dome: SkyDome;
-  private readonly route = new Route('landscape-seaside', CHAPTERS);
+  readonly route = new Route('landscape-seaside', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly creatures = new SeasideCreatures();
   private readonly interactions = createInteractions();

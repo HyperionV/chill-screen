@@ -35,7 +35,7 @@ function mixColor(a: RGB, b: RGB, t: number, result: RGB): RGB {
 }
 
 export class NightTrain implements JourneyView {
-  private readonly route = new Route('night-train', CHAPTERS);
+  readonly route = new Route('night-train', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly fog = new FrostGlass();
   private readonly scenery = new Scenery();

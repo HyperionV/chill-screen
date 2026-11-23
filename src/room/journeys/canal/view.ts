@@ -30,7 +30,7 @@ export class CanalView implements JourneyView {
   private unit = 1;
   private multiplier = PACE_SPEED.gentle;
 
-  private readonly route = new Route('canal', CHAPTERS);
+  readonly route = new Route('canal', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly fog = new FogLayer();

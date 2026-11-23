@@ -40,7 +40,7 @@ export class JungleView implements JourneyView {
   private multiplier = PACE_SPEED.gentle;
   private lastChapterIndex = -1;
 
-  private readonly route = new Route('jungle', CHAPTERS);
+  readonly route = new Route('jungle', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly land = memoryCanvas(1, 1);

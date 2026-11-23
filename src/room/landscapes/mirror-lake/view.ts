@@ -29,7 +29,7 @@ export class MirrorLake implements OutsideView {
   private unit = 1;
   private activeScene = 0;
   private sprites: Sprites | null = null;
-  private readonly route = new Route('landscape-mirror-lake', CHAPTERS);
+  readonly route = new Route('landscape-mirror-lake', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly sky = memoryCanvas(1, 1);

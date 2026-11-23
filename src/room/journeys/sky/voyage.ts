@@ -33,7 +33,7 @@ export class SkyVoyage implements JourneyView {
   private sprites: Sprites | null = null;
   private layer: ReturnType<typeof memoryCanvas> | null = null;
   private readonly dome: SkyDome;
-  private readonly route = new Route('sky', CHAPTERS);
+  readonly route = new Route('sky', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly scenery = new Scenery();
   private readonly creatures = new Creatures();

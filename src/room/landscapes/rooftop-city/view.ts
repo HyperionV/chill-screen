@@ -39,7 +39,7 @@ export class RooftopCityView implements OutsideView {
   private unit = 1;
   private designW = 480;
 
-  private readonly route = new Route('landscape-rooftop-city', CHAPTERS);
+  readonly route = new Route('landscape-rooftop-city', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly land = memoryCanvas(1, 1);

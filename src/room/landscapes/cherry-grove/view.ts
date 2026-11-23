@@ -33,7 +33,7 @@ export class CherryGrove implements OutsideView {
   private designWidth = 1;
   private unit = 1;
   private activeChapter = 0;
-  private readonly route = new Route('landscape-cherry-grove', CHAPTERS);
+  readonly route = new Route('landscape-cherry-grove', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly look: Look = { mean: 0.5, sun: null, sky: [], night: 0, tint: [195, 169, 175] };

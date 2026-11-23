@@ -1,4 +1,5 @@
 import type { Look } from '../wallpapers/look';
+import type { Route } from './journeys/route';
 
 export interface ViewFrame {
   dt: number;
@@ -10,6 +11,8 @@ export interface ViewFrame {
 
 /** What is seen through the window: the built-in seaside, or the person's own wallpapers. Drawn in stage pixels. */
 export interface OutsideView {
+  /** Where the view is along its chapters, for views that have them; the Settings panel shows and holds it. */
+  readonly route?: Route;
   resize(w: number, h: number): void;
   /** Draws the view and returns how its light looks right now, or null when there is nothing to show yet. */
   draw(ctx: CanvasRenderingContext2D, frame: ViewFrame): Look | null;

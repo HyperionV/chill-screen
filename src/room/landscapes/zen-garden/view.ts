@@ -28,7 +28,7 @@ export class ZenGarden implements OutsideView {
   private designWidth = 0;
   private unit = 1;
   private activeScene = 0;
-  private readonly route = new Route('landscape-zen-garden', CHAPTERS);
+  readonly route = new Route('landscape-zen-garden', CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly stage = memoryCanvas(1, 1);

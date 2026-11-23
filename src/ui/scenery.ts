@@ -6,6 +6,7 @@ import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch }
 import type { ToolPanel } from './panel';
 import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
+import { createPhaseStrip } from './phase-strip';
 import { JOURNEYS, JOURNEY_ENTRIES } from '../room/journeys/registry';
 import { choiceList } from './choice-list';
 import { LANDSCAPES, LANDSCAPE_ENTRIES } from '../room/landscapes/registry';
@@ -104,12 +105,16 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
     if (s.scene === 'journey') {
       body.append(field('Pace', segmented('Pace', PACES, s.pace, (pace) => PACE_LABELS[pace], (pace) => scenery.update({ pace }))));
     }
+    const phases = (): HTMLElement | null => {
+      const route = scenery.route;
+      return route && createPhaseStrip(route);
+    };
     if (s.scene === 'journey') {
-      body.append(field('Journey', choiceList('Journey', JOURNEYS, JOURNEY_ENTRIES, s.journey, (journey) => scenery.update({ journey }))));
+      body.append(field('Journey', choiceList('Journey', JOURNEYS, JOURNEY_ENTRIES, s.journey, (journey) => scenery.update({ journey }), phases)));
       return;
     }
     if (s.scene === 'landscape') {
-      body.append(field('Landscape', choiceList('Landscape', LANDSCAPES, LANDSCAPE_ENTRIES, s.landscape, (landscape) => scenery.update({ landscape }))));
+      body.append(field('Landscape', choiceList('Landscape', LANDSCAPES, LANDSCAPE_ENTRIES, s.landscape, (landscape) => scenery.update({ landscape }), phases)));
       body.append(h('p', { class: 'hint' }, 'Move the pointer across the glass to wipe it.'));
       return;
     }

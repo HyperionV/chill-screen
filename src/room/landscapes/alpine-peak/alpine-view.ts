@@ -35,7 +35,7 @@ export class AlpinePeakView implements OutsideView {
   private h = 0;
   private unit = 1;
 
-  private readonly route = new Route(ROUTE_KEY, CHAPTERS);
+  readonly route = new Route(ROUTE_KEY, CHAPTERS);
   private readonly title = new ChapterTitle();
   private readonly dome: SkyDome;
   private readonly land = memoryCanvas(1, 1);
