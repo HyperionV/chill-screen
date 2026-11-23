@@ -7,8 +7,8 @@ const LINE_INTERVAL_SECONDS = 70;
 const LINE_SECONDS = 18;
 const FADE_SECONDS = 1.5;
 
-/** Keep the caption above the chapter title and use the same colours as the title. */
-const CAPTION_ROW = 0.15;
+/** Sit the caption just under the clock, in the clear space above the radio and clear of the window bars. */
+const CAPTION_ROW = 0.6;
 const SIZE = 1;
 const CENTER_FRACTION = 0.5;
 const CREAM = 'rgb(246,238,214)';
@@ -40,11 +40,40 @@ const TWO_GALAXIES = [
   'The ship turns toward the Station. Home.',
 ];
 
+/** A line wider than this share of the screen is shown as two rows. */
+const MAX_WIDTH_FRACTION = 0.92;
+/** Glyph height plus two rows of space between caption rows. */
+const ROW_STEP = 7;
+
+interface Row {
+  text: string;
+  width: number;
+}
+
+interface CaptionLine {
+  whole: Row;
+  single: readonly [Row];
+  /** The same sentence cut at the space nearest its middle, for narrow screens. */
+  halves: readonly [Row, Row];
+}
+
+function toRow(text: string): Row {
+  return { text, width: textWidth(text) * SIZE };
+}
+
+function toCaptionLine(line: string): CaptionLine {
+  const text = plainText(line);
+  const middle = text.length / 2;
+  let cut = text.indexOf(' ');
+  for (let i = cut; i >= 0; i = text.indexOf(' ', i + 1)) {
+    if (Math.abs(i - middle) < Math.abs(cut - middle)) cut = i;
+  }
+  const whole = toRow(text);
+  return { whole, single: [whole], halves: [toRow(text.slice(0, cut)), toRow(text.slice(cut + 1))] };
+}
+
 const CAPTIONS = [GARGANTUA, BLUE_HORIZON, GIANT_AND_GALAXY, GOLDEN_HEART, TWO_GALAXIES].map((lines) =>
-  lines.map((line) => {
-    const text = plainText(line);
-    return { text, width: textWidth(text) * SIZE };
-  }),
+  lines.map(toCaptionLine),
 );
 
 /** Shows the current chapter's story lines and repeats them while the chapter is held. */
@@ -68,12 +97,16 @@ export class StoryCaption {
     const age = sinceFirstLine % LINE_INTERVAL_SECONDS;
     if (!line || age >= LINE_SECONDS) return;
 
-    const x = Math.round((w - line.width) * CENTER_FRACTION);
-    const y = Math.round(h * CAPTION_ROW);
+    const rows = line.whole.width <= w * MAX_WIDTH_FRACTION ? line.single : line.halves;
+    const top = Math.round(h * CAPTION_ROW);
     ctx.save();
     ctx.globalAlpha = Math.min(1, age / FADE_SECONDS, (LINE_SECONDS - age) / FADE_SECONDS);
-    drawText(ctx, line.text, x + SIZE, y + SIZE, SHADOW, SIZE);
-    drawText(ctx, line.text, x, y, CREAM, SIZE);
+    for (let i = 0; i < rows.length; i++) {
+      const x = Math.round((w - rows[i].width) * CENTER_FRACTION);
+      const y = top + i * ROW_STEP * SIZE;
+      drawText(ctx, rows[i].text, x + SIZE, y + SIZE, SHADOW, SIZE);
+      drawText(ctx, rows[i].text, x, y, CREAM, SIZE);
+    }
     ctx.restore();
   }
 }

@@ -32,7 +32,7 @@ export const LANDSCAPE_ENTRIES: Record<LandscapeId, LandscapeEntry> = {
   'mirror-lake': { label: 'Mirror Lake', create: createMirrorLake, hint: 'A still lake that mirrors the sky. Touch the water to send ripples.' },
   'cherry-grove': { label: 'Cherry Blossom Grove', create: createCherryGrove, hint: 'Petals on the wind. Shake the trees with the pointer.' },
   'fishing-spot': { label: 'Fishing Spot', create: createFishingSpot, hint: 'A jetty and a float. Cast, wait and reel in a catch.' },
-  interstellar: { label: 'Interstellar', ownSky: true, create: createInterstellar, hint: 'A planet, a nebula and a drifting ship. Fire a comet with a click.' },
+  interstellar: { label: 'Interstellar', ownSky: true, create: createInterstellar, hint: 'Ten scenes of deep space, ending in the story of a ship coming home. Fire a comet with a click.' },
   'alpine-peak': { label: 'Alpine Peak', create: createAlpinePeak, hint: 'Snow ridges and an eagle. Trigger a gentle avalanche.' },
   'snowy-cabin': { label: 'Snowy Cabin', create: createSnowyCabin, hint: 'A warm cabin in falling snow. Light the lamp and the chimney.' },
   'zen-garden': { label: 'Zen Garden', create: createZenGarden, hint: 'Raked sand and a koi pond. Draw lines in the sand.' },

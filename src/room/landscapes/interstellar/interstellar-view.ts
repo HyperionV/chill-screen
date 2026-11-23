@@ -123,8 +123,8 @@ export class InterstellarView implements OutsideView {
   press(x: number, y: number): void {
     if (this.w <= 0 || this.h <= 0 || !this.sprites) return;
 
-    // 1. Recurring explorer probe has top click priority.
-    if (this.probe.contains(x, y, this.unit)) {
+    // 1. Recurring explorer probe has top click priority (it is not shown in the story chapters).
+    if (this.route.now.index < FIRST_DEEP_CHAPTER && this.probe.contains(x, y, this.unit)) {
       this.probe.triggerSpin();
       return;
     }
@@ -255,7 +255,10 @@ export class InterstellarView implements OutsideView {
     }
 
     // Recurring explorer probe on top of scene worlds (Layer 5).
-    this.probe.draw(ctx, this.sprites.craft, frame.time, this.unit, 1);
+    // The story chapters have their own ship, so the probe steps out of them.
+    let storyWeight = 0;
+    for (let i = FIRST_DEEP_CHAPTER; i < CHAPTERS.length; i++) storyWeight += this.weights[i];
+    this.probe.draw(ctx, this.sprites.craft, frame.time, this.unit, 1 - storyWeight);
 
     // Layer 6: Foreground stardust, micrometeoroids, and comets.
     this.interactions.stardust.draw(ctx, this.style.tint);
