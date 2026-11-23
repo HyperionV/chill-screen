@@ -4,6 +4,7 @@ import type { OutsideView } from '../view';
 import { createAlpinePeak } from './alpine-peak';
 import { createCherryGrove } from './cherry-grove';
 import { createFishingSpot } from './fishing-spot';
+import { createForestCanopy } from './forest-canopy';
 import { createGravityFalls } from './gravity-falls';
 import { createInterstellar } from './interstellar';
 import { createMirrorLake } from './mirror-lake';
@@ -14,7 +15,7 @@ import { createZenGarden } from './zen-garden';
 
 export const LANDSCAPES = [
   'seaside', 'pine-forest', 'mirror-lake', 'cherry-grove', 'fishing-spot',
-  'interstellar', 'alpine-peak', 'snowy-cabin', 'zen-garden', 'rooftop-city', 'gravity-falls',
+  'interstellar', 'alpine-peak', 'snowy-cabin', 'zen-garden', 'rooftop-city', 'gravity-falls', 'forest-canopy',
 ] as const;
 export type LandscapeId = (typeof LANDSCAPES)[number];
 
@@ -39,6 +40,7 @@ export const LANDSCAPE_ENTRIES: Record<LandscapeId, LandscapeEntry> = {
   'zen-garden': { label: 'Zen Garden', create: createZenGarden, hint: 'Raked sand and a koi pond. Draw lines in the sand.' },
   'rooftop-city': { label: 'Rooftop City', create: createRooftopCity, hint: 'A skyline from above. Wave at the neighbours and the pigeons.' },
   'gravity-falls': { label: 'Gravity Falls', create: createGravityFalls, hint: 'A mystery-filled town and woods. Chat with the cast, hunt hidden symbols and decode notes.' },
+  'forest-canopy': { label: 'Forest Canopy', create: createForestCanopy, hint: 'Lying on a root, looking up through tall trees and sunrays. Click to shake the leaves loose.' },
 };
 
 /** The landscape to show when nothing has been chosen, or when the saved choice is no longer on offer. */
