@@ -3,12 +3,13 @@ import { Journey } from '../journey/journey';
 import type { JourneyView } from './journey-view';
 import { createCanal } from './canal';
 import { createFairyRoad } from './fairy';
+import { createGravityFallsJourney } from './gravity-falls';
 import { createJungle } from './jungle';
 import { createNightBus } from './night-bus';
 import { createNightTrain } from './night-train';
 import { createSkyVoyage } from './sky';
 
-export const JOURNEYS = ['wildwood', 'night-train', 'canal', 'night-bus', 'jungle', 'sky', 'fairy'] as const;
+export const JOURNEYS = ['wildwood', 'night-train', 'canal', 'night-bus', 'jungle', 'sky', 'fairy', 'gravity-falls'] as const;
 export type JourneyId = (typeof JOURNEYS)[number];
 
 interface JourneyEntry {
@@ -48,6 +49,10 @@ export const JOURNEY_ENTRIES: Record<JourneyId, JourneyEntry> = {
   fairy: {
     label: 'Fairy Road', create: createFairyRoad,
     hint: 'A cart through the mushroom wood. Lead the wisps to the lantern.',
+  },
+  'gravity-falls': {
+    label: 'Gravity Falls', create: createGravityFallsJourney,
+    hint: 'A walk from the Shack to the Hidden Hollow. Click the cast for a quip and hunt the hidden symbols.',
   },
 };
 
