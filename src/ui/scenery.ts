@@ -6,7 +6,7 @@ import { ROTATION_MINUTES, ROTATIONS, SCENES, type SceneKind, type SceneSwitch }
 import type { ToolPanel } from './panel';
 import { createFontsField } from './fonts-field';
 import { createPopover } from './popover';
-import { createPhaseStrip } from './phase-strip';
+import { createPhaseSlider } from './phase-slider';
 import { JOURNEYS, JOURNEY_ENTRIES } from '../room/journeys/registry';
 import { choiceList } from './choice-list';
 import { LANDSCAPES, LANDSCAPE_ENTRIES } from '../room/landscapes/registry';
@@ -107,7 +107,7 @@ export function createSceneryPanel(scenery: SceneSwitch): ToolPanel {
     }
     const phases = (): HTMLElement | null => {
       const route = scenery.route;
-      return route && createPhaseStrip(route);
+      return route && createPhaseSlider(route);
     };
     if (s.scene === 'journey') {
       body.append(field('Journey', choiceList('Journey', JOURNEYS, JOURNEY_ENTRIES, s.journey, (journey) => scenery.update({ journey }), phases)));

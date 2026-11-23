@@ -6,6 +6,9 @@ import { readJson, writeJson } from '../store';
 
 const KEY = 'chillscreen.reminders';
 const MINUTE = 60_000;
+const CHECK_EVERY_MS = 1_000;
+// Repeat so a missed alert still gets noticed.
+const RING_EVERY_MS = 5_000;
 const QUICK_MINUTES = [10, 30, 60] as const;
 const DEFAULT_TEXT = 'Reminder';
 
@@ -14,6 +17,7 @@ interface Reminder {
   text: string;
   /** When it goes off (epoch ms). */
   at: number;
+  ringing?: boolean;
 }
 
 const isReminderList = (v: unknown): v is Reminder[] =>
@@ -22,7 +26,8 @@ const isReminderList = (v: unknown): v is Reminder[] =>
     typeof r === 'object' && r !== null &&
     'id' in r && typeof r.id === 'string' &&
     'text' in r && typeof r.text === 'string' &&
-    'at' in r && typeof r.at === 'number');
+    'at' in r && typeof r.at === 'number' &&
+    (!('ringing' in r) || typeof r.ringing === 'boolean'));
 
 /** The next time the clock will read `hhmm` ("15:30"): today if still ahead, otherwise tomorrow. */
 function nextOccurrence(hhmm: string): number {
@@ -43,15 +48,6 @@ function whenLabel(at: number): string {
   return date.toDateString() === new Date().toDateString() ? time : `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
 }
 
-function desktopAlert(text: string, id: string): void {
-  if (!('Notification' in window) || Notification.permission !== 'granted') return;
-  try {
-    new Notification('ChillScreen', { body: text, tag: id });
-  } catch (err) {
-    console.warn('[reminders] desktop alert failed', err);
-  }
-}
-
 export interface Reminders {
   /** The card's contents: the reminders still to come. */
   body: HTMLElement;
@@ -61,9 +57,11 @@ export interface Reminders {
   banners: HTMLElement;
 }
 
-/** Reminders: pick a time, get a banner, a chime and a desktop alert when it comes. Survives reloads. */
+/** Reminders keep alerting until dismissed, including after reloads. */
 export function createReminders(): Reminders {
   let reminders = readJson<Reminder[]>(KEY, [], isReminderList);
+  const lastRing = new Map<string, number>();
+  const desktopAlerts = new Map<string, Notification>();
   /** The reminder the floating form is changing, or null while it makes a new one. */
   let editing: Reminder | null = null;
   const text = h('input', { class: 'field', type: 'text', placeholder: 'Remind me to…', 'aria-label': 'Reminder', maxlength: 120 });
@@ -88,7 +86,7 @@ export function createReminders(): Reminders {
 
   const render = (): void => {
     clear(list);
-    for (const r of [...reminders].sort((a, b) => a.at - b.at)) {
+    for (const r of reminders.filter((r) => !r.ringing).sort((a, b) => a.at - b.at)) {
       const editBtn = h('button', { class: 'icon-btn ghost', 'aria-label': `Edit ${r.text}`, title: 'Edit', onclick: () => openForm(editBtn, r) }, icon(ICONS.edit));
       list.append(
         h('li', { class: 'task' },
@@ -125,21 +123,55 @@ export function createReminders(): Reminders {
     save(editing && time.value === clockValue(editing.at) ? editing.at : nextOccurrence(time.value));
   };
 
+  const closeDesktopAlert = (id: string): void => {
+    desktopAlerts.get(id)?.close();
+    desktopAlerts.delete(id);
+  };
+
+  const desktopAlert = (r: Reminder): void => {
+    closeDesktopAlert(r.id);
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    try {
+      desktopAlerts.set(r.id, new Notification('ChillScreen', { body: r.text, tag: r.id }));
+    } catch (err) {
+      console.warn('[reminders] desktop alert failed', err);
+    }
+  };
+
   const banner = (r: Reminder): void => {
     const el = h('div', { class: 'banner' },
       h('span', { class: 'banner-text' }, r.text),
-      h('button', { class: 'btn', onclick: () => el.remove() }, 'Dismiss'));
+      h('button', { class: 'btn', onclick: () => {
+        reminders = reminders.filter((x) => x !== r);
+        lastRing.delete(r.id);
+        closeDesktopAlert(r.id);
+        el.remove();
+        commit();
+      } }, 'Dismiss'));
     banners.append(el);
   };
 
   const fireDue = (): void => {
-    const due = reminders.filter((r) => r.at <= Date.now());
-    if (due.length === 0) return;
-    reminders = reminders.filter((r) => !due.includes(r));
-    commit();
-    for (const r of due) {
-      banner(r);
-      desktopAlert(r.text, r.id);
+    const now = Date.now();
+    let startedRinging = false;
+    for (const [index, r] of reminders.entries()) {
+      if (r.ringing || r.at > now) continue;
+      // Keep an already-open edit form from changing a reminder after it goes off.
+      const ringing = { ...r, ringing: true };
+      reminders[index] = ringing;
+      banner(ringing);
+      startedRinging = true;
+    }
+    if (startedRinging) commit();
+
+    const readyToRing = reminders.filter((r) => {
+      const last = lastRing.get(r.id);
+      return r.ringing && (last === undefined || now - last >= RING_EVERY_MS);
+    });
+    if (readyToRing.length === 0) return;
+    for (const r of readyToRing) {
+      lastRing.set(r.id, now);
+      desktopAlert(r);
     }
     chime();
   };
@@ -161,8 +193,11 @@ export function createReminders(): Reminders {
       h('div', { class: 'reminder-add' }, time, confirm, h('span', { class: 'reminder-quick' }, ...quick))),
     'Reminder');
 
-  window.setInterval(fireDue, 1000);
+  window.setInterval(fireDue, CHECK_EVERY_MS);
   render();
+  for (const r of reminders) {
+    if (r.ringing) banner(r);
+  }
   fireDue();
 
   return { body: list, action: newButton, banners };

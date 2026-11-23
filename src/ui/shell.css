@@ -369,6 +369,7 @@ body[data-mode="business"] .focus-float {
 
 .choice-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
 }
 
@@ -391,66 +392,60 @@ body[data-mode="business"] .focus-float {
   color: var(--text);
 }
 
-/* The phases of the picked scene: a row of names that slides sideways, the current one with its padlock. */
-.phase-track {
-  display: flex;
-  gap: 2px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scroll-snap-type: x proximity;
-  scrollbar-width: none;
-}
-
-.phase-track::-webkit-scrollbar {
-  display: none;
-}
-
-.phase {
-  flex: none;
-  display: flex;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.24);
-  scroll-snap-align: center;
-}
-
-.phase-name,
-.phase-lock {
-  border: 0;
-  background: none;
-  color: var(--muted);
-}
-
-.phase-name {
-  padding: 6px 10px;
-  font-size: calc(17px * var(--content-scale, 1));
-  white-space: nowrap;
-}
-
-.phase-name:hover {
-  color: var(--text);
-}
-
-.phase.current {
+/* The phases of the picked scene: a card that continues the picked row, with a slider of stops and a padlock. */
+.phase-card {
+  display: grid;
+  gap: 4px;
+  margin-top: -2px;
+  padding: 4px 10px 10px;
   background: rgba(255, 255, 255, 0.1);
 }
 
-.phase.current .phase-name {
+.phase-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--text);
-  padding-right: 4px;
+  font-size: calc(18px * var(--content-scale, 1));
 }
 
 .phase-lock {
-  display: none;
-  padding: 6px 8px 6px 4px;
-  color: var(--faint);
-}
-
-.phase.current .phase-lock {
   display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--muted);
+  font-size: calc(16px * var(--content-scale, 1));
+  white-space: nowrap;
 }
 
-.phase.locked .phase-lock {
+.phase-lock:hover {
+  color: var(--text);
+}
+
+.phase-lock.locked {
+  border-color: var(--accent);
   color: var(--accent);
+}
+
+/* One small square per stop, spaced like the slider's stops (half a thumb in from each end). */
+.phase-ticks {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 5px;
+}
+
+.phase-tick {
+  width: 4px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.phase-tick.current {
+  background: var(--accent);
 }
 
 .choice-name {

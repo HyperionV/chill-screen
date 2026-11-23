@@ -348,6 +348,8 @@ body.idle .dock {
 /* Scenery */
 .field-row {
   display: grid;
+  /* minmax(0, ...) lets a wide child (a sideways-sliding row) scroll inside its own box instead of stretching the panel. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 7px;
   margin-bottom: 16px;
 }

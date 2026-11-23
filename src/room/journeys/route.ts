@@ -68,7 +68,7 @@ export class Route {
 
   /** Goes to the middle of a chapter. A held route stays held, now on this chapter. */
   goTo(index: number): void {
-    if (index < 0 || index >= this.chapters.length) return;
+    if (!Number.isInteger(index) || index < 0 || index >= this.chapters.length) return;
     this.seconds = this.startOf(index + REST_POINT);
     writeJson(this.key, Math.round(this.seconds));
     if (this.locked !== null) this.setLock(index);
