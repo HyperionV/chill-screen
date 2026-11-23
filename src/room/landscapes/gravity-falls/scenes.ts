@@ -1,6 +1,7 @@
 import { SCENE_LIFT } from '../../gravity-falls/types';
 import type { Chapter } from '../../journeys/route';
 import type { SceneBuilder } from './scene-art';
+import { buildHidden } from './hidden';
 import { buildLake } from './lake';
 import { buildShack } from './shack';
 import { buildTown } from './town';
@@ -29,6 +30,7 @@ export const SCENES: readonly SceneEntry[] = [
   { name: 'Gnome Woods', build: buildWoods, lift: SCENE_LIFT + WOODS_EXTRA_LIFT },
   { name: 'Water Tower Hill', build: buildTown, lift: SCENE_LIFT },
   { name: 'The Lake', build: buildLake, lift: SCENE_LIFT },
+  { name: 'The Hidden Hollow', build: buildHidden, lift: SCENE_LIFT },
 ];
 
 export const CHAPTERS: readonly Chapter[] = SCENES.map((scene) => ({ name: scene.name, seconds: SCENE_SECONDS }));

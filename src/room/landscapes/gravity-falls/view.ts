@@ -108,6 +108,7 @@ export class GravityFallsLandscape implements OutsideView {
       pointer = this.pointer;
     }
     this.updateCast(stage, dt, frame.time, fade === 0, pointer);
+    this.scenes[active].setDoorOpen?.(this.mystery.doorOpen);
     const state = this.dome.stateAt(hourNow());
     updateLook(this.look, state);
     this.dome.draw(this.sky.ctx, state, frame, this.look);

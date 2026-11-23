@@ -23,6 +23,8 @@ export interface SceneArt {
   press?(x: number, y: number, time: number): boolean;
   /** Light that is added after the night tint so it stays bright: windows, lamps, fireflies, glints. */
   drawGlow(ctx: CanvasRenderingContext2D, time: number, night: number): void;
+  /** Only the Hidden Hollow: its door and runes light up once every symbol is found. */
+  setDoorOpen?(open: boolean): void;
 }
 
 /** Builds a scene for a design width. */
