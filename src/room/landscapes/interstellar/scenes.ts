@@ -2,13 +2,24 @@ import type { RGB } from '../../../render/color';
 import { ramp } from '../../journeys/noise';
 import type { Chapter } from '../../journeys/route';
 
-/** Five scenes of the Interstellar landscape (17.5 minutes total loop at speed 1). */
+/** Each chapter holds its scene for three and a half minutes at normal speed. */
+const CHAPTER_SECONDS = 210;
+
+/** Zero-based index of the first chapter in The Long Way Home. */
+export const FIRST_DEEP_CHAPTER = 5;
+
+/** Ten scenes of the Interstellar landscape (35 minutes total loop at speed 1). */
 export const CHAPTERS: readonly Chapter[] = [
-  { name: 'Ringed Giant', seconds: 210 },
-  { name: 'Nebula Nursery', seconds: 210 },
-  { name: 'Asteroid Garden', seconds: 210 },
-  { name: 'Ice Moon and Station', seconds: 210 },
-  { name: 'Binary Sun', seconds: 210 },
+  { name: 'Ringed Giant', seconds: CHAPTER_SECONDS },
+  { name: 'Nebula Nursery', seconds: CHAPTER_SECONDS },
+  { name: 'Asteroid Garden', seconds: CHAPTER_SECONDS },
+  { name: 'Ice Moon and Station', seconds: CHAPTER_SECONDS },
+  { name: 'Binary Sun', seconds: CHAPTER_SECONDS },
+  { name: 'Gargantua', seconds: CHAPTER_SECONDS },
+  { name: 'Blue Horizon', seconds: CHAPTER_SECONDS },
+  { name: 'Giant and Galaxy', seconds: CHAPTER_SECONDS },
+  { name: 'Golden Heart', seconds: CHAPTER_SECONDS },
+  { name: 'Two Galaxies', seconds: CHAPTER_SECONDS },
 ];
 
 /** Cross-dissolve over the final 10.5 seconds of each 210-second chapter. */
@@ -100,6 +111,76 @@ export const SCENE_STYLES: readonly SceneStyle[] = [
     sunV: 0.2,
     sunColor: [255, 194, 128],
   },
+  // 6. Gargantua: a warm disc against dark space
+  {
+    spaceTop: [3, 4, 10],
+    spaceBottom: [8, 8, 16],
+    hazeA: [112, 64, 34],
+    hazeB: [30, 48, 92],
+    tint: [86, 62, 50],
+    mean: 0.09,
+    night: 0.97,
+    sunStrength: 0.3,
+    sunU: 0.76,
+    sunV: 0.3,
+    sunColor: [255, 190, 120],
+  },
+  // 7. Blue Horizon: blue and violet light at the edge
+  {
+    spaceTop: [4, 6, 22],
+    spaceBottom: [8, 10, 32],
+    hazeA: [40, 64, 170],
+    hazeB: [96, 60, 150],
+    tint: [48, 60, 128],
+    mean: 0.1,
+    night: 0.98,
+    sunStrength: 0.25,
+    sunU: 0.72,
+    sunV: 0.38,
+    sunColor: [150, 180, 255],
+  },
+  // 8. Giant and Galaxy: cool space with a faint pink glow
+  {
+    spaceTop: [4, 8, 22],
+    spaceBottom: [10, 18, 40],
+    hazeA: [44, 70, 128],
+    hazeB: [110, 84, 120],
+    tint: [52, 72, 118],
+    mean: 0.1,
+    night: 0.98,
+    sunStrength: 0.18,
+    sunU: 0.7,
+    sunV: 0.3,
+    sunColor: [230, 210, 255],
+  },
+  // 9. Golden Heart: an amber glow from the galaxy's centre
+  {
+    spaceTop: [10, 7, 12],
+    spaceBottom: [26, 16, 14],
+    hazeA: [150, 92, 40],
+    hazeB: [70, 70, 120],
+    tint: [110, 82, 60],
+    mean: 0.16,
+    night: 0.93,
+    sunStrength: 0.5,
+    sunU: 0.5,
+    sunV: 0.45,
+    sunColor: [255, 200, 130],
+  },
+  // 10. Two Galaxies: pale gold and blue haze around the two spirals
+  {
+    spaceTop: [4, 5, 12],
+    spaceBottom: [12, 12, 24],
+    hazeA: [120, 92, 52],
+    hazeB: [60, 74, 120],
+    tint: [84, 76, 80],
+    mean: 0.11,
+    night: 0.97,
+    sunStrength: 0.2,
+    sunU: 0.4,
+    sunV: 0.4,
+    sunColor: [255, 214, 160],
+  },
 ];
 
 export function createSceneStyle(): SceneStyle {
@@ -118,7 +199,7 @@ export function createSceneStyle(): SceneStyle {
   };
 }
 
-/** Fills normalized weights across the 5 scenes, cross-dissolving over the final 10.5 seconds. */
+/** Fills normalized weights across the ten scenes, cross-dissolving over the final 10.5 seconds. */
 export function fillSceneWeights(index: number, t: number, next: number, out: Float32Array): void {
   out.fill(0);
   const blend = ramp(TRANSITION_START, 1, t);

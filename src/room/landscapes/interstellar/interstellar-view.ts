@@ -6,6 +6,13 @@ import { Route } from '../../journeys/route';
 import type { OutsideView, ViewFrame } from '../../view';
 import { gust } from '../../wind';
 import { CargoFreighter, DockingTraffic, ExplorerProbe, PatrolDrone, TetheredAstronaut } from './cast';
+import { createBlueHorizon } from './deep/blue-horizon';
+import type { DeepRenderContext, DeepScene } from './deep/deep-scene';
+import { createGargantua } from './deep/gargantua';
+import { createGiantAndGalaxy } from './deep/giant-and-galaxy';
+import { createGoldenHeart } from './deep/golden-heart';
+import { StoryCaption } from './deep/story';
+import { createTwinGalaxies } from './deep/twin-galaxies';
 import { SpaceInteractions } from './interactions';
 import {
   drawAsteroidScene,
@@ -18,7 +25,7 @@ import {
   type AsteroidBody,
   type SceneRenderContext,
 } from './scene-renderers';
-import { CHAPTERS, blendSceneStyle, createSceneStyle, fillSceneWeights } from './scenes';
+import { CHAPTERS, FIRST_DEEP_CHAPTER, blendSceneStyle, createSceneStyle, fillSceneWeights } from './scenes';
 import { buildInterstellarSprites, type InterstellarSprites } from './sprites';
 
 const DESIGN_ROWS = 270;
@@ -26,6 +33,12 @@ const FAR_STARS = 135;
 const MID_STARS = 55;
 const ASTEROID_COUNT = 11;
 const FOREGROUND_PEBBLES = 5;
+/** Skip scene work when the scene contributes at most one percent to the dissolve. */
+const MIN_SCENE_WEIGHT = 0.01;
+/** Stop sliding when the scene is nearly fully visible. */
+const SETTLED_SCENE_WEIGHT = 0.99;
+/** An incoming scene starts at the beginning of its chapter. */
+const CHAPTER_START = 0;
 /** Horizontal travel at the start or end of a chapter transition, at the design size. */
 const CHAPTER_SLIDE = 14;
 
@@ -46,9 +59,9 @@ interface StarDot {
 }
 
 /**
- * Interstellar: a calm deep-space window view drifting across five scenes (Ringed Giant, Nebula Nursery,
- * Asteroid Garden, Ice Moon and Station, Binary Sun) with twinkling stars, interactive comets,
- * shimmering worlds, and a recurring round white explorer probe.
+ * Interstellar: a calm deep-space window view drifting across ten chapters with twinkling stars,
+ * interactive comets, and a recurring explorer probe. The last five tell The Long Way Home,
+ * the story of a small ship returning to the Station that circles Gargantua.
  */
 export class InterstellarView implements OutsideView {
   private w = 0;
@@ -57,9 +70,26 @@ export class InterstellarView implements OutsideView {
 
   readonly route = new Route('landscape-interstellar', CHAPTERS);
   private readonly title = new ChapterTitle();
+  private readonly story = new StoryCaption();
   private readonly weights = new Float32Array(CHAPTERS.length);
   private readonly style = createSceneStyle();
   private readonly look: Look = { mean: 0.09, sun: null, sky: [], night: 1, tint: [38, 48, 86] };
+  private readonly deepScenes: readonly DeepScene[] = [
+    createGargantua(),
+    createBlueHorizon(),
+    createGiantAndGalaxy(),
+    createGoldenHeart(),
+    createTwinGalaxies(),
+  ];
+  private readonly deepContext: DeepRenderContext = {
+    w: this.w,
+    h: this.h,
+    unit: this.unit,
+    time: 0,
+    alpha: 0,
+    chapterSlide: 0,
+    windStrength: 0,
+  };
 
   private readonly probe = new ExplorerProbe();
   private readonly freighter = new CargoFreighter();
@@ -76,9 +106,14 @@ export class InterstellarView implements OutsideView {
   resize(w: number, h: number): void {
     this.w = Math.max(0, Math.round(w));
     this.h = Math.max(0, Math.round(h));
+    const unit = Math.max(0.5, this.h / DESIGN_ROWS);
+    this.deepContext.w = this.w;
+    this.deepContext.h = this.h;
+    this.deepContext.unit = unit;
+    for (const scene of this.deepScenes) scene.resize(this.w, this.h, unit);
     if (this.w <= 0 || this.h <= 0) return;
 
-    this.unit = Math.max(0.5, this.h / DESIGN_ROWS);
+    this.unit = unit;
     this.sprites = buildInterstellarSprites(this.unit);
     this.interactions.resize(this.w, this.h);
     this.buildStars();
@@ -94,7 +129,8 @@ export class InterstellarView implements OutsideView {
       return;
     }
 
-    const dominant = this.route.now.index;
+    const now = this.route.now;
+    const dominant = now.index;
 
     // 2. Scene-specific cast & station clicks.
     if (dominant === 1 && this.astronaut.contains(x, y, this.unit)) {
@@ -141,7 +177,12 @@ export class InterstellarView implements OutsideView {
       }
     }
 
-    // 4. Empty space launches a comet from the clicked spot.
+    // 4. During a dissolve, the more visible chapter takes deep scene clicks.
+    fillSceneWeights(now.index, now.t, now.next, this.weights);
+    const visibleChapter = this.weights[now.next] > this.weights[now.index] ? now.next : now.index;
+    if (this.deepScenes[visibleChapter - FIRST_DEEP_CHAPTER]?.press(x, y)) return;
+
+    // 5. Empty space launches a comet from the clicked spot.
     this.interactions.launchComet(x, y, this.w, this.unit);
   }
 
@@ -158,12 +199,12 @@ export class InterstellarView implements OutsideView {
 
     const windStrength = gust(frame.time);
     this.interactions.update(dt, this.w, this.h, this.unit, frame.pointer, windStrength);
-    if (this.weights[0] > 0.01) this.freighter.update(dt, this.w, this.h, frame.pointer);
-    if (this.weights[1] > 0.01) {
+    if (this.weights[0] > MIN_SCENE_WEIGHT) this.freighter.update(dt, this.w, this.h, frame.pointer);
+    if (this.weights[1] > MIN_SCENE_WEIGHT) {
       this.astronaut.update(dt, frame.time, this.w, this.h, frame.pointer);
     }
-    if (this.weights[2] > 0.01) this.drone.update(dt, this.w, this.h, frame.pointer);
-    if (this.weights[3] > 0.01) this.docking.update(dt);
+    if (this.weights[2] > MIN_SCENE_WEIGHT) this.drone.update(dt, this.w, this.h, frame.pointer);
+    if (this.weights[3] > MIN_SCENE_WEIGHT) this.docking.update(dt);
     this.probe.update(dt, frame.time, this.w, this.h, this.weights, frame.pointer);
 
     // Layer 1: Deep space backdrop and cosmic haze.
@@ -174,12 +215,22 @@ export class InterstellarView implements OutsideView {
     this.drawStars(ctx, this.midStars, frame.time, true);
 
     // Layer 4 & 5: Scene-specific celestial worlds and cast, cross-dissolved smoothly.
+    this.deepContext.time = frame.time;
+    this.deepContext.windStrength = windStrength;
     for (let i = 0; i < CHAPTERS.length; i++) {
       const wScene = this.weights[i];
-      if (wScene <= 0.01) continue;
-      const chapterSlide = wScene < 0.99
+      if (wScene <= MIN_SCENE_WEIGHT) continue;
+      const chapterSlide = wScene < SETTLED_SCENE_WEIGHT
         ? (i === now.index ? -1 : 1) * (1 - wScene) * CHAPTER_SLIDE * this.unit
         : 0;
+      if (i >= FIRST_DEEP_CHAPTER) {
+        const scene = this.deepScenes[i - FIRST_DEEP_CHAPTER];
+        scene.update(dt, frame.time, i === now.index ? now.t : CHAPTER_START, frame.pointer);
+        this.deepContext.alpha = wScene;
+        this.deepContext.chapterSlide = chapterSlide;
+        scene.draw(ctx, this.deepContext);
+        continue;
+      }
       const rc: SceneRenderContext = {
         w: this.w,
         h: this.h,
@@ -212,6 +263,7 @@ export class InterstellarView implements OutsideView {
     this.interactions.drawComets(ctx, this.unit);
 
     this.title.draw(ctx, dt, this.w, this.h, now.name);
+    this.story.draw(ctx, dt, this.w, this.h, now.index);
     return this.look;
   }
 
