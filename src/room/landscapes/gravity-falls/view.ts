@@ -9,7 +9,7 @@ import { MysteryBoard } from '../../gravity-falls/mystery';
 import { Troupe } from '../../gravity-falls/performer';
 import { QUIPS } from '../../gravity-falls/quips';
 import { SCRIPTS } from '../../gravity-falls/scripts';
-import { PLACES, type Point } from '../../gravity-falls/types';
+import { PLACES, sceneLift, type Point } from '../../gravity-falls/types';
 import { ChapterTitle } from '../../journeys/chapter-title';
 import { ramp } from '../../journeys/noise';
 import { Route } from '../../journeys/route';
@@ -85,7 +85,7 @@ export class GravityFallsLandscape implements OutsideView {
     const { stage, shown } = this;
     if (!stage || shown < 0 || this.width === 0 || this.height === 0) return;
     const px = (x * this.designWidth) / this.width;
-    const py = y / this.unit + SCENES[shown].lift;
+    const py = y / this.unit + sceneLift(SCENES[shown].extraLift);
     const who = stage.troupe.pick(px, py, 0);
     if (who) stage.talk.poke(who);
     else if (!this.mystery.press(px, py, 0)) this.scenes[shown].press?.(px, py, this.time);
@@ -104,7 +104,7 @@ export class GravityFallsLandscape implements OutsideView {
     let pointer: Point | null = null;
     if (frame.pointer) {
       this.pointer.x = (frame.pointer.x * this.designWidth) / this.width;
-      this.pointer.y = frame.pointer.y / this.unit + SCENES[this.shown >= 0 ? this.shown : 0].lift;
+      this.pointer.y = frame.pointer.y / this.unit + sceneLift(SCENES[this.shown >= 0 ? this.shown : 0].extraLift);
       pointer = this.pointer;
     }
     this.updateCast(stage, dt, frame.time, fade === 0, pointer);
@@ -131,7 +131,7 @@ export class GravityFallsLandscape implements OutsideView {
     const { stage, shown } = this;
     if (!stage || shown < 0 || this.width === 0 || this.height === 0) return;
     this.projection.unit = this.unit;
-    this.projection.lift = SCENES[shown].lift;
+    this.projection.lift = sceneLift(SCENES[shown].extraLift);
     stage.talk.drawBubbles(screen, this.projection, stageWidth);
     this.mystery.drawOverlay(screen, stageWidth, stageHeight);
   }
@@ -178,7 +178,7 @@ export class GravityFallsLandscape implements OutsideView {
     scene.drawAhead(land, time, night);
     tintLand(land, this.designWidth, DESIGN_HEIGHT, state);
     ctx.save();
-    ctx.translate(0, -SCENES[chapter].lift);
+    ctx.translate(0, -sceneLift(SCENES[chapter].extraLift));
     ctx.drawImage(this.land.canvas, 0, 0);
     scene.drawGlow(ctx, time, night);
     ctx.restore();

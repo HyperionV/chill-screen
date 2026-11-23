@@ -1,4 +1,5 @@
 /** Shared vocabulary of the Gravity Falls Journey and Landscape: who is in the cast, how they talk, what can be found. */
+import { frameSetting } from '../../scene/frame-setting';
 
 /** Everyone who can stand in a scene. Pixel designs and names are a fan homage. */
 export const CAST_IDS = [
@@ -18,6 +19,14 @@ export type PlaceId = (typeof PLACES)[number];
  * 46 and 242 (screen rows 22 to 218). Keep everything that matters inside that band.
  */
 export const SCENE_LIFT = 24;
+
+/**
+ * The lift in force right now: with the window turned off nothing hides the top or bottom of the screen, so the
+ * picture stays put (a lift would leave an empty strip along the bottom). `extra` is a scene's own further lift.
+ */
+export function sceneLift(extra = 0): number {
+  return frameSetting.framed ? SCENE_LIFT + extra : 0;
+}
 
 export type Facing = 1 | -1;
 

@@ -9,7 +9,7 @@ import { MysteryBoard } from '../../gravity-falls/mystery';
 import { Troupe } from '../../gravity-falls/performer';
 import { QUIPS } from '../../gravity-falls/quips';
 import { SCRIPTS } from '../../gravity-falls/scripts';
-import { PLACES, SCENE_LIFT, type PerformerHome, type Point } from '../../gravity-falls/types';
+import { PLACES, sceneLift, type PerformerHome, type Point } from '../../gravity-falls/types';
 import { PACE_SPEED, type Pace } from '../../journey/pace';
 import { SKY_HORIZON, tintLand, updateLook } from '../../landscapes/gravity-falls/view-render';
 import type { NightSky } from '../../night-sky';
@@ -88,7 +88,7 @@ export class GravityFallsJourney implements JourneyView {
   private readonly mystery = new MysteryBoard();
   private readonly pointer: Point = { x: 0, y: 0 };
   /** Where design pixels land on the stage for the speech: the camera's place and the shared lift. */
-  private readonly projection: Projection = { unit: 1, lift: SCENE_LIFT, cameraX: 0 };
+  private readonly projection: Projection = { unit: 1, lift: sceneLift(), cameraX: 0 };
   private stage: Stage | null = null;
 
   constructor(nightSky: NightSky) {
@@ -125,7 +125,7 @@ export class GravityFallsJourney implements JourneyView {
     const world = shown < 0 ? null : this.built[shown];
     if (!stage || !world || this.width === 0 || this.height === 0) return;
     const px = (x * this.designWidth) / this.width;
-    const py = y / this.unit + SCENE_LIFT;
+    const py = y / this.unit + sceneLift();
     const who = stage.troupe.pick(px, py, this.camera);
     if (who) stage.talk.poke(who);
     else if (!this.mystery.press(px, py, this.camera)) world.press?.(px + this.camera, py, this.time);
@@ -232,7 +232,7 @@ export class GravityFallsJourney implements JourneyView {
     stage.troupe.update(dt, time);
     if (pointer) {
       this.pointer.x = (pointer.x * this.designWidth) / this.width + this.camera;
-      this.pointer.y = pointer.y / this.unit + SCENE_LIFT;
+      this.pointer.y = pointer.y / this.unit + sceneLift();
       for (const performer of stage.troupe.performers) {
         if (performer.walking || performer.inConversation) continue;
         const dx = this.pointer.x - performer.x;
@@ -268,7 +268,7 @@ export class GravityFallsJourney implements JourneyView {
     world.drawAhead(land, cameraX, time, night);
     tintLand(land, this.designWidth, DESIGN_ROWS, state);
     ctx.save();
-    ctx.translate(0, -SCENE_LIFT);
+    ctx.translate(0, -sceneLift());
     ctx.drawImage(this.land.canvas, 0, 0);
     world.drawGlow(ctx, cameraX, time, night);
     ctx.restore();
